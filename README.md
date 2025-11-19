@@ -207,13 +207,9 @@ from being uploaded.
 
 # 👥 **Authors**
 
-- ThuYammT  
-- Add your team members here
-
----
-
-# 📬 **Support**
-If you run into issues:
+- Thu Ya Myint Myat Thein
+- S Harry Lynn Oo
+- Hein Htet Moe Tun
 
 ```bash
 docker compose down
