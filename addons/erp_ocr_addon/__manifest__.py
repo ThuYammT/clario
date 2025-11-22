@@ -15,9 +15,19 @@
     ],
 
     "data": [
-    "security/ir.model.access.csv",
-    "views/ocr_invoice_views.xml",
-    "views/menus.xml",
+        "security/ir.model.access.csv",
+
+        "data/ocr_sequences.xml",
+
+        # ---- VIEWS ----
+        "views/menus.xml",
+        "views/ocr_actions.xml",
+        "views/ocr_invoice_form.xml",
+        "views/ocr_receipt_form.xml",
+        "views/ocr_preview_wizard.xml",
+        "views/ocr_document_tree.xml",
+        "views/ocr_document_search.xml",
+        "views/ocr_dashboard_views.xml",
     ],
 
     "installable": True,
