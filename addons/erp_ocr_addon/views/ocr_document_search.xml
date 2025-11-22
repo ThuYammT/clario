@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<odoo>
+    <record id="view_ocr_document_search" model="ir.ui.view">
+        <field name="name">ocr.document.search</field>
+        <field name="model">ocr.document</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="document_type"/>
+                <filter name="uploaded" string="Uploaded" domain="[('status','=','uploaded')]"/>
+            </search>
+        </field>
+    </record>
+</odoo>

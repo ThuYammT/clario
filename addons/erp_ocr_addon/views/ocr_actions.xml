@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <!-- Placeholder Action: Document List -->
+        <record id="action_ocr_document" model="ir.actions.act_window">
+            <field name="name">OCR Documents</field>
+            <field name="res_model">ocr.document</field>
+            <field name="view_mode">tree,form</field>
+        </record>
+
+        <!-- Placeholder Action: Upload Invoice -->
+        <record id="action_ocr_invoice_form" model="ir.actions.act_window">
+            <field name="name">Upload Invoice</field>
+            <field name="res_model">ocr.document</field>
+            <field name="view_mode">form</field>
+            <field name="context">{'default_document_type': 'invoice'}</field>
+        </record>
+
+        <!-- Placeholder Action: Upload Receipt -->
+        <record id="action_ocr_receipt_form" model="ir.actions.act_window">
+            <field name="name">Upload Receipt</field>
+            <field name="res_model">ocr.document</field>
+            <field name="view_mode">form</field>
+            <field name="context">{'default_document_type': 'receipt'}</field>
+        </record>
+
+        <!-- Placeholder Action: Dashboard -->
+        <record id="action_ocr_dashboard" model="ir.actions.act_window">
+            <field name="name">OCR Dashboard</field>
+            <field name="res_model">ocr.dashboard</field>
+            <field name="view_mode">kanban</field>
+        </record>
+
+    </data>
+</odoo>

@@ -20,8 +20,8 @@
         "data/ocr_sequences.xml",
 
         # ---- VIEWS ----
-        "views/menus.xml",
-        "views/ocr_actions.xml",
+        "views/ocr_actions.xml",          # MUST load first
+        "views/menus.xml",                # MUST load after actions
         "views/ocr_invoice_form.xml",
         "views/ocr_receipt_form.xml",
         "views/ocr_preview_wizard.xml",

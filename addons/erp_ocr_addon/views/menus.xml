@@ -1,18 +1,24 @@
+<?xml version="1.0"?>
 <odoo>
-    <data>
+    <menuitem id="menu_ocr_root" name="OCR Processing" sequence="10"/>
 
-        <!-- MAIN MENU (App Entry) -->
-        <menuitem id="menu_ocr_root"
-                  name="OCR Processing"
-                  sequence="10"
-                  action="action_ocr_invoice"/>
-        
-        <!-- SUBMENU: INVOICES -->
-        <menuitem id="menu_ocr_invoices"
-                  name="Invoices"
-                  parent="menu_ocr_root"
-                  action="action_ocr_invoice"
-                  sequence="1"/>
+    <menuitem id="menu_ocr_upload_invoice"
+              name="Upload Invoice"
+              parent="menu_ocr_root"
+              action="action_ocr_invoice_form"/>
 
-    </data>
+    <menuitem id="menu_ocr_upload_receipt"
+              name="Upload Receipt"
+              parent="menu_ocr_root"
+              action="action_ocr_receipt_form"/>
+
+    <menuitem id="menu_ocr_history"
+              name="Document History"
+              parent="menu_ocr_root"
+              action="action_ocr_document"/>
+
+    <menuitem id="menu_ocr_dashboard"
+              name="Dashboard"
+              parent="menu_ocr_root"
+              action="action_ocr_dashboard"/>
 </odoo>
