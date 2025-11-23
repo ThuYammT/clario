@@ -2,34 +2,47 @@
 <odoo>
     <data>
 
-        <!-- Placeholder Action: Document List -->
+        <!-- Document List -->
         <record id="action_ocr_document" model="ir.actions.act_window">
             <field name="name">OCR Documents</field>
             <field name="res_model">ocr.document</field>
             <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="view_ocr_document_tree"/>
         </record>
 
-        <!-- Placeholder Action: Upload Invoice -->
+        <!-- Upload Invoice -->
         <record id="action_ocr_invoice_form" model="ir.actions.act_window">
             <field name="name">Upload Invoice</field>
             <field name="res_model">ocr.document</field>
             <field name="view_mode">form</field>
+            <field name="view_id" ref="view_ocr_invoice_form"/>
             <field name="context">{'default_document_type': 'invoice'}</field>
         </record>
 
-        <!-- Placeholder Action: Upload Receipt -->
+        <!-- Upload Receipt -->
         <record id="action_ocr_receipt_form" model="ir.actions.act_window">
             <field name="name">Upload Receipt</field>
             <field name="res_model">ocr.document</field>
             <field name="view_mode">form</field>
+            <field name="view_id" ref="view_ocr_receipt_form"/>
             <field name="context">{'default_document_type': 'receipt'}</field>
         </record>
 
-        <!-- Placeholder Action: Dashboard -->
+        <!-- Dashboard -->
         <record id="action_ocr_dashboard" model="ir.actions.act_window">
             <field name="name">OCR Dashboard</field>
             <field name="res_model">ocr.dashboard</field>
             <field name="view_mode">kanban</field>
+            <field name="view_id" ref="view_ocr_dashboard_kanban"/>
+        </record>
+
+        <!-- Wizard Action -->
+        <record id="action_ocr_preview_wizard" model="ir.actions.act_window">
+            <field name="name">Preview Extracted Data</field>
+            <field name="res_model">ocr.preview.wizard</field>
+            <field name="view_mode">form</field>
+            <field name="view_id" ref="view_ocr_preview_wizard_form"/>
+            <field name="target">new</field>
         </record>
 
     </data>
