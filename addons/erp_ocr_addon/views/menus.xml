@@ -1,6 +1,11 @@
 <?xml version="1.0"?>
 <odoo>
-    <menuitem id="menu_ocr_root" name="OCR Processing" sequence="10"/>
+
+    <!-- ROOT MENU now correctly linked to main document list -->
+    <menuitem id="menu_ocr_root"
+              name="OCR Processing"
+              sequence="10"
+              action="action_ocr_document"/>
 
     <menuitem id="menu_ocr_upload_invoice"
               name="Upload Invoice"
@@ -21,4 +26,5 @@
               name="Dashboard"
               parent="menu_ocr_root"
               action="action_ocr_dashboard"/>
+
 </odoo>
