@@ -12,7 +12,9 @@ services:
     restart: unless-stopped
 
   odoo:
-    image: odoo:17
+    build:
+      context: .
+      dockerfile: Dockerfile
     depends_on:
       - db
     ports:

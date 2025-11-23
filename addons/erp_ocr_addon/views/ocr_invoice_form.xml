@@ -5,17 +5,16 @@
         <field name="model">ocr.document</field>
         <field name="arch" type="xml">
 
-            <form string="Upload Invoice">
+            <form string="Invoice Upload" edit="true">
+
                 <sheet>
 
-                    <!-- ========== TOP SECTION ========== -->
-                    <group>
-                        <h2 style="color:#3c8dbc; font-weight:600; margin-bottom:10px;">
-                            📄 Invoice Upload
-                        </h2>
-                    </group>
+                    <!-- ===== HEADER ===== -->
+                    <separator string="Invoice Upload"
+                               style="font-size:20px; font-weight:600; color:#3c8dbc;"
+                    />
 
-                    <!-- Upload File Section -->
+                    <!-- ===== FILE UPLOAD SECTION ===== -->
                     <group string="Invoice File" col="2" class="o_inner_group">
                         <field name="name"/>
                         <field name="document_type" invisible="1"/>
@@ -23,9 +22,9 @@
                         <field name="filename" invisible="1"/>
                     </group>
 
-                    <separator string="Extracted Data" style="margin-top:15px;"/>
+                    <separator string="Extracted Data" style="margin-top:20px;"/>
 
-                    <!-- Extracted Fields Section -->
+                    <!-- ===== EXTRACTED FIELDS ===== -->
                     <group col="2">
                         <group string="Vendor Information" class="o_inner_group">
                             <field name="vendor_name"/>
@@ -39,30 +38,36 @@
                         </group>
                     </group>
 
-                    <separator string="OCR Output" style="margin-top:10px;"/>
+                    <separator string="OCR Output" style="margin-top:20px;"/>
 
-                    <!-- OCR text -->
+                    <!-- ===== OCR RAW TEXT ===== -->
                     <group col="1">
-                        <field name="extracted_text" readonly="1" placeholder="No OCR text yet..."/>
-                        <field name="extraction_log" readonly="1" placeholder="No logs yet..."/>
+                        <field name="extracted_text"
+                               readonly="1"
+                               placeholder="OCR text will appear here..."/>
+                        <field name="extraction_log"
+                               readonly="1"
+                               placeholder="Any parsing errors will appear here..."/>
                     </group>
 
-                    <!-- Footer Buttons -->
-                    <footer>
-                        <button string="Run OCR"
-                                type="object"
-                                name="action_run_ocr"
-                                class="btn-primary"/>
-
-                        <button string="Preview &amp; Confirm"
-                                type="action"
-                                name="%(action_ocr_preview_wizard)d"
-                                class="btn-secondary"/>
-
-                        <button string="Cancel" special="cancel"/>
-                    </footer>
-
                 </sheet>
+
+                <!-- ===== ACTION BUTTONS (MUST BE OUTSIDE SHEET) ===== -->
+                <footer>
+                    <button string="Run OCR"
+                            type="object"
+                            name="action_run_ocr"
+                            class="btn-primary"/>
+
+                    <button string="Preview &amp; Confirm"
+                            type="action"
+                            name="%(action_ocr_preview_wizard)d"
+                            class="btn-secondary"/>
+
+                    <button string="Cancel"
+                            special="cancel"/>
+                </footer>
+
             </form>
 
         </field>
