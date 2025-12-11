@@ -1,73 +1,37 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <record id="view_ocr_invoice_form" model="ir.ui.view">
         <field name="name">ocr.invoice.form</field>
         <field name="model">ocr.document</field>
         <field name="arch" type="xml">
 
-            <form string="Invoice Upload" edit="true">
-
+            <form string="Invoice Upload">
                 <sheet>
 
-                    <!-- ===== HEADER ===== -->
-                    <separator string="Invoice Upload"
-                               style="font-size:20px; font-weight:600; color:#3c8dbc;"
-                    />
+                    <!-- Upload Section -->
+                    <group string="Upload Invoice">
 
-                    <!-- ===== FILE UPLOAD SECTION ===== -->
-                    <group string="Invoice File" col="2" class="o_inner_group">
+                        <div class="o_form_label" colspan="2">
+                            Upload your invoice
+                        </div>
+
+                        <p>
+                            Reduce manual data entry, save time, and improve accuracy.
+                            Upload a clear invoice image or PDF to begin OCR processing.
+                        </p>
+
+                        <field name="file" filename="name" widget="image" required="1"/>
+                    </group>
+
+                    <!-- Basic Document Information -->
+                    <group string="Document Details" col="2">
                         <field name="name"/>
-                        <field name="document_type" invisible="1"/>
-                        <field name="file" filename="filename"/>
-                        <field name="filename" invisible="1"/>
-                    </group>
-
-                    <separator string="Extracted Data" style="margin-top:20px;"/>
-
-                    <!-- ===== EXTRACTED FIELDS ===== -->
-                    <group col="2">
-                        <group string="Vendor Information" class="o_inner_group">
-                            <field name="vendor_name"/>
-                            <field name="invoice_date"/>
-                        </group>
-
-                        <group string="Amounts" class="o_inner_group">
-                            <field name="total_amount"/>
-                            <field name="vat_amount"/>
-                            <field name="confidence_score" readonly="1"/>
-                        </group>
-                    </group>
-
-                    <separator string="OCR Output" style="margin-top:20px;"/>
-
-                    <!-- ===== OCR RAW TEXT ===== -->
-                    <group col="1">
-                        <field name="extracted_text"
-                               readonly="1"
-                               placeholder="OCR text will appear here..."/>
-                        <field name="extraction_log"
-                               readonly="1"
-                               placeholder="Any parsing errors will appear here..."/>
+                        <field name="upload_date" readonly="1"/>
+                        <field name="user_id" readonly="1"/>
+                        <field name="doc_type" readonly="1"/>
                     </group>
 
                 </sheet>
-
-                <!-- ===== ACTION BUTTONS (MUST BE OUTSIDE SHEET) ===== -->
-                <footer>
-                    <button string="Run OCR"
-                            type="object"
-                            name="action_run_ocr"
-                            class="btn-primary"/>
-
-                    <button string="Preview &amp; Confirm"
-                            type="action"
-                            name="%(action_ocr_preview_wizard)d"
-                            class="btn-secondary"/>
-
-                    <button string="Cancel"
-                            special="cancel"/>
-                </footer>
-
             </form>
 
         </field>

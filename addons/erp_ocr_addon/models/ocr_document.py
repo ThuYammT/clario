@@ -1,125 +1,172 @@
-from odoo import models, fields, api
-from datetime import datetime
+# -*- coding: utf-8 -*-
+from odoo import models, fields, api, _
+from odoo.exceptions import UserError
+
+from .ocr_parser import OCRParser
 
 
 class OCRDocument(models.Model):
     _name = "ocr.document"
-    _description = "OCR Document Storage"
+    _description = "OCR Document"
     _order = "create_date desc"
 
-    # ------------------------------
-    # BASIC META INFO
-    # ------------------------------
-
-    name = fields.Char(
-        string="Document Name",
-        required=True,
-        default=lambda self: "OCR Document"
-    )
-
-    document_type = fields.Selection(
+    # -------------------------
+    # BASIC FIELDS
+    # -------------------------
+    name = fields.Char(string="Document Name", required=True)
+    file = fields.Binary(string="File", attachment=True, required=True)
+    doc_type = fields.Selection(
         [
-            ('invoice', 'Invoice'),
-            ('receipt', 'Receipt'),
+            ("invoice", "Invoice"),
+            ("receipt", "Receipt"),
         ],
         string="Document Type",
         required=True,
-        default="invoice"
+        default="invoice",
+    )
+    upload_date = fields.Datetime(
+        string="Uploaded On",
+        default=lambda self: fields.Datetime.now(),
+        readonly=True,
+    )
+    user_id = fields.Many2one(
+        "res.users",
+        string="Uploaded By",
+        default=lambda self: self.env.user,
+        readonly=True,
     )
 
-    file = fields.Binary(
-        string="Upload File",
-        attachment=True,
-        required=True
+    # -------------------------
+    # STATUS
+    # -------------------------
+    status = fields.Selection(
+        [
+            ("uploaded", "Uploaded"),
+            ("processing", "Processing"),
+            ("completed", "Completed"),
+            ("error", "Error"),
+        ],
+        string="Status",
+        default="uploaded",
     )
+    progress = fields.Integer(string="Progress (%)", default=0)
 
-    filename = fields.Char(string="Filename")
+    # -------------------------
+    # OCR RESULT FIELDS
+    # -------------------------
+    vendor_name = fields.Char(string="Vendor / Shop Name")
+    invoice_date = fields.Date(string="Invoice / Receipt Date")
 
-    extracted_text = fields.Text(
-        string="Raw OCR Text",
-        help="Full text extracted from OCR before parsing"
-    )
-
-    # ------------------------------
-    # PARSED / EXTRACTED FIELDS
-    # ------------------------------
-
-    vendor_name = fields.Char(string="Vendor Name")
-    invoice_date = fields.Date(string="Date")
     total_amount = fields.Float(string="Total Amount")
     vat_amount = fields.Float(string="VAT Amount")
     confidence_score = fields.Float(string="OCR Confidence Score")
 
-    # Extra recommended fields
-    invoice_number = fields.Char(string="Invoice Number")
-    currency_id = fields.Many2one(
-        "res.currency",
-        string="Currency",
-        default=lambda self: self.env.company.currency_id.id
-    )
-
-    # ------------------------------
-    # PROCESSING INFORMATION
-    # ------------------------------
-
-    status = fields.Selection(
-        [
-            ('uploaded', "Uploaded"),
-            ('extracting', "Extracting..."),
-            ('extracted', "Extracted"),
-            ('review', "In Review"),
-            ('failed', "Failed"),
-            ('posted', "Posted to System")
-        ],
-        string="Status",
-        default="uploaded"
-    )
-
-    processed_datetime = fields.Datetime(string="Processed Date & Time")
+    extracted_text = fields.Text(string="Raw OCR Text")
     extraction_log = fields.Text(string="Extraction Log")
 
-    linked_record_id = fields.Reference(
-        [
-            ('account.move', 'Vendor Bill'),
-            ('hr.expense', 'Expense Record')
-        ],
-        string="Linked Record"
-    )
+    # For history filtering / dashboard
+    is_invoice = fields.Boolean(string="Is Invoice", compute="_compute_type_flags")
+    is_receipt = fields.Boolean(string="Is Receipt", compute="_compute_type_flags")
 
-    # ------------------------------
-    # METHODS
-    # ------------------------------
+    def _compute_type_flags(self):
+        for rec in self:
+            rec.is_invoice = rec.doc_type == "invoice"
+            rec.is_receipt = rec.doc_type == "receipt"
 
+    # ------------------------------------------
+    # AUTO-GENERATE DOCUMENT NAME USING SEQUENCE
+    # ------------------------------------------
     @api.model
     def create(self, vals):
-        if vals.get("file") and not vals.get("filename"):
-            vals["filename"] = vals.get("name")
+        # If no name was given, auto-generate one
+        if not vals.get("name"):
+            seq = self.env["ir.sequence"].next_by_code("ocr.document") or "OCR-0000"
+            vals["name"] = seq
         return super().create(vals)
 
-    # STATUS UPDATE HELPERS
-    def mark_extracted(self):
-        for rec in self:
-            rec.status = "extracted"
-            rec.processed_datetime = datetime.now()
-
-    def mark_failed(self, log_msg=None):
-        for rec in self:
-            rec.status = "failed"
-            rec.extraction_log = log_msg
-            rec.processed_datetime = datetime.now()
-
-    # Button: Run OCR
+    # -------------------------
+    # MAIN OCR ACTION
+    # -------------------------
     def action_run_ocr(self):
-        """Temporary placeholder OCR logic until real OCR is connected."""
+        """
+        Called from the form 'Run OCR' button.
+        - Uses OCRParser to run Tesseract on self.file
+        - Fills fields and marks status/progress
+        """
+        for doc in self:
+            if not doc.file:
+                raise UserError(_("Please upload a file before running OCR."))
+
+            # Mark as processing
+            doc.write({
+                "status": "processing",
+                "progress": 10,
+            })
+
+            text = OCRParser.run_tesseract(doc.file)
+
+            if text.startswith("OCR ERROR:"):
+                # Mark as error and store message in log
+                new_log = (doc.extraction_log or "") + "\n" + text
+                doc.write({
+                    "status": "error",
+                    "progress": 100,
+                    "extracted_text": text,
+                    "extraction_log": new_log.strip(),
+                })
+                continue
+
+            # Parse fields
+            data = OCRParser.extract_fields(text)
+
+            log_lines = [
+                "=== OCR Extraction ===",
+                f"Vendor: {data.get('vendor_name', '')}",
+                f"Total: {data.get('total_amount', 0.0)}",
+                f"VAT: {data.get('vat_amount', 0.0)}",
+                f"Confidence: {data.get('confidence', 0.0)}",
+            ]
+            if data.get("invoice_date_raw"):
+                log_lines.append(f"Raw date: {data['invoice_date_raw']}")
+
+            # NOTE: we keep invoice_date empty for now (raw date in log)
+            vals = {
+                "status": "completed",
+                "progress": 100,
+                "vendor_name": data.get("vendor_name") or False,
+                "total_amount": data.get("total_amount") or 0.0,
+                "vat_amount": data.get("vat_amount") or 0.0,
+                "confidence_score": data.get("confidence") or 0.0,
+                "extracted_text": text,
+                "extraction_log": ((doc.extraction_log or "") + "\n" + "\n".join(log_lines)).strip(),
+            }
+
+            doc.write(vals)
+
+        return True
+
+    # -------------------------
+    # ACTIONS USED FROM TREE / UI
+    # -------------------------
+    def action_rerun_ocr(self):
+        """
+        Called from the 'Re-run OCR' button in the history tree.
+        Just calls action_run_ocr again.
+        """
         for rec in self:
-            rec.status = "extracting"
+            rec.action_run_ocr()
+        return True
 
-            # Placeholder
-            rec.extracted_text = "SAMPLE OCR TEXT"
-            rec.vendor_name = "Sample Vendor"
-            rec.total_amount = 123.45
-            rec.vat_amount = 7.00
-            rec.invoice_date = datetime.now().date()
-            rec.confidence_score = 0.95
-
-            rec.mark_extracted()
+    def action_view_image(self):
+        """
+        Open form view (same record) so the user can see the file + result.
+        Used by the 'View' button in history tree.
+        """
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "res_model": "ocr.document",
+            "view_mode": "form",
+            "res_id": self.id,
+            "target": "current",
+        }

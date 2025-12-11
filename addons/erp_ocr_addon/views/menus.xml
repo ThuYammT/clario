@@ -1,30 +1,36 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- ROOT MENU now correctly linked to main document list -->
-    <menuitem id="menu_ocr_root"
-              name="OCR Processing"
-              sequence="10"
-              action="action_ocr_document"/>
+    <menuitem id="menu_ocr_root" name="Clareo" sequence="1"/>
 
-    <menuitem id="menu_ocr_upload_invoice"
-              name="Upload Invoice"
+    <menuitem id="menu_ocr_home"
+              name="Home"
               parent="menu_ocr_root"
-              action="action_ocr_invoice_form"/>
+              action="action_ocr_home"
+              sequence="1"/>
 
-    <menuitem id="menu_ocr_upload_receipt"
-              name="Upload Receipt"
+    <menuitem id="menu_ocr_invoice"
+              name="Invoice"
               parent="menu_ocr_root"
-              action="action_ocr_receipt_form"/>
+              action="action_upload_invoice"
+              sequence="2"/>
+
+    <menuitem id="menu_ocr_receipt"
+              name="Receipt"
+              parent="menu_ocr_root"
+              action="action_upload_receipt"
+              sequence="3"/>
 
     <menuitem id="menu_ocr_history"
-              name="Document History"
+              name="History"
               parent="menu_ocr_root"
-              action="action_ocr_document"/>
+              action="action_ocr_document_history"
+              sequence="4"/>
 
     <menuitem id="menu_ocr_dashboard"
               name="Dashboard"
               parent="menu_ocr_root"
-              action="action_ocr_dashboard"/>
+              action="action_ocr_dashboard_analytics"
+              sequence="5"/>
 
 </odoo>
