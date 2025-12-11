@@ -1,48 +1,53 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <data>
 
-        <!-- Document List -->
-        <record id="action_ocr_document" model="ir.actions.act_window">
-            <field name="name">OCR Documents</field>
-            <field name="res_model">ocr.document</field>
-            <field name="view_mode">tree,form</field>
-            <field name="view_id" ref="view_ocr_document_tree"/>
+        <!-- HOME ACTION -->
+        <record id="action_ocr_home" model="ir.actions.act_window">
+            <field name="name">Clareo Home</field>
+            <field name="res_model">ocr.dashboard</field>
+            <field name="view_mode">form</field>
+            <field name="target">current</field>
         </record>
 
         <!-- Upload Invoice -->
-        <record id="action_ocr_invoice_form" model="ir.actions.act_window">
+        <record id="action_upload_invoice" model="ir.actions.act_window">
             <field name="name">Upload Invoice</field>
             <field name="res_model">ocr.document</field>
             <field name="view_mode">form</field>
-            <field name="view_id" ref="view_ocr_invoice_form"/>
-            <field name="context">{'default_document_type': 'invoice'}</field>
+            <field name="context">
+                {'default_doc_type': 'invoice'}
+            </field>
+            <field name="target">current</field>
         </record>
 
         <!-- Upload Receipt -->
-        <record id="action_ocr_receipt_form" model="ir.actions.act_window">
+        <record id="action_upload_receipt" model="ir.actions.act_window">
             <field name="name">Upload Receipt</field>
             <field name="res_model">ocr.document</field>
             <field name="view_mode">form</field>
-            <field name="view_id" ref="view_ocr_receipt_form"/>
-            <field name="context">{'default_document_type': 'receipt'}</field>
+            <field name="context">
+                {'default_doc_type': 'receipt'}
+            </field>
+            <field name="target">current</field>
         </record>
 
-        <!-- Dashboard -->
-        <record id="action_ocr_dashboard" model="ir.actions.act_window">
+        <!-- History -->
+        <record id="action_ocr_document_history" model="ir.actions.act_window">
+            <field name="name">Document History</field>
+            <field name="res_model">ocr.document</field>
+            <field name="view_mode">tree,form</field>
+            <field name="view_id" ref="view_ocr_document_tree"/>
+            <field name="search_view_id" ref="view_ocr_document_search"/>
+            <field name="target">current</field>
+        </record>
+
+        <!-- Dashboard Analytics -->
+        <record id="action_ocr_dashboard_analytics" model="ir.actions.act_window">
             <field name="name">OCR Dashboard</field>
             <field name="res_model">ocr.dashboard</field>
-            <field name="view_mode">kanban</field>
-            <field name="view_id" ref="view_ocr_dashboard_kanban"/>
-        </record>
-
-        <!-- Wizard Action -->
-        <record id="action_ocr_preview_wizard" model="ir.actions.act_window">
-            <field name="name">Preview Extracted Data</field>
-            <field name="res_model">ocr.preview.wizard</field>
             <field name="view_mode">form</field>
-            <field name="view_id" ref="view_ocr_preview_wizard_form"/>
-            <field name="target">new</field>
+            <field name="target">current</field>
         </record>
 
     </data>

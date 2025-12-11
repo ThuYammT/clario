@@ -1,18 +1,52 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="view_ocr_dashboard_kanban" model="ir.ui.view">
-        <field name="name">ocr.dashboard.kanban</field>
+
+    <record id="view_ocr_dashboard_form" model="ir.ui.view">
+        <field name="name">ocr.dashboard.form</field>
         <field name="model">ocr.dashboard</field>
         <field name="arch" type="xml">
-            <kanban>
-                <templates>
-                    <t t-name="kanban-box">
-                        <div class="oe_kanban_details">
-                            <strong>OCR Dashboard (Placeholder)</strong>
-                        </div>
-                    </t>
-                </templates>
-            </kanban>
+
+            <form string="OCR Dashboard">
+                <sheet>
+
+                    <group string="Overview" col="3">
+
+                        <group>
+                            <div class="o_form_label">Invoices</div>
+                            <field name="invoice_count" readonly="1"/>
+                        </group>
+
+                        <group>
+                            <div class="o_form_label">Receipts</div>
+                            <field name="receipt_count" readonly="1"/>
+                        </group>
+
+                        <group>
+                            <div class="o_form_label">Completed</div>
+                            <field name="completed_count" readonly="1"/>
+                        </group>
+
+                        <group>
+                            <div class="o_form_label">Errors</div>
+                            <field name="error_count" readonly="1"/>
+                        </group>
+
+                        <group>
+                            <div class="o_form_label">Average Confidence</div>
+                            <field name="avg_confidence" readonly="1"/>
+                        </group>
+
+                        <group>
+                            <div class="o_form_label">Total Amount</div>
+                            <field name="total_amount" readonly="1"/>
+                        </group>
+
+                    </group>
+
+                </sheet>
+            </form>
+
         </field>
     </record>
+
 </odoo>

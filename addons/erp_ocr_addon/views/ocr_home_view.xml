@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_ocr_home_form" model="ir.ui.view">
+        <field name="name">ocr.home.form</field>
+        <field name="model">ocr.dashboard</field>
+        <field name="arch" type="xml">
+
+            <form string="Clareo">
+                <sheet>
+                    <group>
+                        <h1>Clareo OCR Finance</h1>
+
+                        <p>
+                            Clareo automates invoice and receipt processing inside Odoo
+                            by converting uploaded documents into clean structured data.
+                        </p>
+
+                        <separator string="Quick Actions"/>
+
+                        <group col="2">
+                            <button string="Upload Invoice"
+                                    type="action"
+                                    name="%(action_upload_invoice)d"
+                                    class="btn-primary"/>
+
+                            <button string="Upload Receipt"
+                                    type="action"
+                                    name="%(action_upload_receipt)d"
+                                    class="btn-primary"/>
+                        </group>
+
+                        <group col="2">
+                            <button string="View History"
+                                    type="action"
+                                    name="%(action_ocr_document_history)d"/>
+
+                            <button string="Open Dashboard"
+                                    type="action"
+                                    name="%(action_ocr_dashboard_analytics)d"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+
+        </field>
+    </record>
+</odoo>

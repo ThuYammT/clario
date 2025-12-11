@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_ocr_document_form" model="ir.ui.view">
+        <field name="name">ocr.document.form</field>
+        <field name="model">ocr.document</field>
+        <field name="arch" type="xml">
+            <form string="OCR Document">
+                <sheet>
+                    <!-- HEADER INFO -->
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="doc_type"/>
+                            <field name="status" readonly="1"/>
+                            <field name="upload_date" readonly="1"/>
+                            <field name="user_id" readonly="1"/>
+                            <field name="progress" widget="progressbar" readonly="1"/>
+                        </group>
+
+                        <!-- FILE UPLOAD + PREVIEW -->
+                        <group string="File">
+                            <field name="file" filename="name"/>
+                            <!-- Image preview of the same file (readonly) -->
+                            <field name="file" widget="image" class="oe_avatar" readonly="1"/>
+                        </group>
+                    </group>
+
+                    <!-- OCR ACTIONS -->
+                    <group string="OCR Actions">
+                        <button name="action_run_ocr"
+                                type="object"
+                                string="Run OCR"
+                                class="btn-primary"/>
+                    </group>
+
+                    <!-- RESULTS -->
+                    <notebook>
+                        <page string="Structured Result">
+                            <group>
+                                <group>
+                                    <field name="vendor_name"/>
+                                    <field name="invoice_date"/>
+                                </group>
+                                <group>
+                                    <field name="total_amount"/>
+                                    <field name="vat_amount"/>
+                                    <field name="confidence_score" readonly="1"/>
+                                </group>
+                            </group>
+                        </page>
+
+                        <page string="Raw OCR Text">
+                            <field name="extracted_text" nolabel="1"/>
+                        </page>
+
+                        <page string="Extraction Log">
+                            <field name="extraction_log" nolabel="1"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo>
