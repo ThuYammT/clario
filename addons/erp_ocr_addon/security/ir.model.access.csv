@@ -1,4 +1,4 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_ocr_document,access_ocr_document,model_ocr_document,base.group_user,1,1,1,1
-access_ocr_preview_wizard,access_ocr_preview_wizard,model_ocr_preview_wizard,base.group_user,1,1,1,1
+access_ocr_document_line,access_ocr_document_line,model_ocr_document_line,base.group_user,1,1,1,1
 access_ocr_dashboard,access_ocr_dashboard,model_ocr_dashboard,base.group_user,1,0,0,0

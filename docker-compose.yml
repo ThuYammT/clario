@@ -26,6 +26,10 @@ services:
       - HOST=db
       - USER=odoo
       - PASSWORD=odoo
+      - ADMIN_PASSWORD=admin
+      # 🔥 CRITICAL FOR PADDLE OCR
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
     restart: unless-stopped
 
 volumes:

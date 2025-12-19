@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+  <data>
 
-    <menuitem id="menu_ocr_root" name="Clareo" sequence="1"/>
+    <menuitem id="menu_ocr_root" name="Clareo OCR" sequence="10"/>
 
     <menuitem id="menu_ocr_home"
               name="Home"
@@ -9,14 +10,14 @@
               action="action_ocr_home"
               sequence="1"/>
 
-    <menuitem id="menu_ocr_invoice"
-              name="Invoice"
+    <menuitem id="menu_ocr_upload_invoice"
+              name="Upload Invoice"
               parent="menu_ocr_root"
               action="action_upload_invoice"
               sequence="2"/>
 
-    <menuitem id="menu_ocr_receipt"
-              name="Receipt"
+    <menuitem id="menu_ocr_upload_receipt"
+              name="Upload Receipt"
               parent="menu_ocr_root"
               action="action_upload_receipt"
               sequence="3"/>
@@ -27,10 +28,5 @@
               action="action_ocr_document_history"
               sequence="4"/>
 
-    <menuitem id="menu_ocr_dashboard"
-              name="Dashboard"
-              parent="menu_ocr_root"
-              action="action_ocr_dashboard_analytics"
-              sequence="5"/>
-
+  </data>
 </odoo>

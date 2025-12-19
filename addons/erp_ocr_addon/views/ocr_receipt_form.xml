@@ -1,39 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="view_ocr_receipt_form" model="ir.ui.view">
-        <field name="name">ocr.receipt.form</field>
-        <field name="model">ocr.document</field>
-        <field name="arch" type="xml">
+  <record id="view_ocr_receipt_form" model="ir.ui.view">
+    <field name="name">ocr.receipt.form</field>
+    <field name="model">ocr.document</field>
+    <field name="arch" type="xml">
+      <form string="Upload Receipt">
+        <sheet>
+          <div style="max-width:900px;">
+            <h2 style="margin:0 0 6px; font-weight:700;">Upload Receipt</h2>
+            <p style="color:#6b7280; margin:0 0 14px;">
+              Upload a clear receipt image. Then open the document and click Run OCR.
+            </p>
 
-            <form string="Receipt Upload">
-                <sheet>
-
-                    <!-- Upload Section -->
-                    <group string="Upload Receipt">
-
-                        <div class="o_form_label" colspan="2">
-                            Upload your receipt
-                        </div>
-
-                        <p>
-                            Capture expense receipts quickly and accurately.
-                            Upload a clear image or PDF to extract key fields automatically.
-                        </p>
-
-                        <field name="file" filename="name" widget="image" required="1"/>
-                    </group>
-
-                    <!-- Basic Document Information -->
-                    <group string="Document Details" col="2">
-                        <field name="name"/>
-                        <field name="upload_date" readonly="1"/>
-                        <field name="user_id" readonly="1"/>
-                        <field name="doc_type" readonly="1"/>
-                    </group>
-
-                </sheet>
-            </form>
-
-        </field>
-    </record>
+            <group col="2">
+              <field name="doc_type" readonly="1"/>
+              <field name="name"/>
+              <field name="file" filename="file_filename" required="1"/>
+            </group>
+          </div>
+        </sheet>
+      </form>
+    </field>
+  </record>
 </odoo>

@@ -1,39 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="view_ocr_invoice_form" model="ir.ui.view">
-        <field name="name">ocr.invoice.form</field>
-        <field name="model">ocr.document</field>
-        <field name="arch" type="xml">
-
-            <form string="Invoice Upload">
-                <sheet>
-
-                    <!-- Upload Section -->
-                    <group string="Upload Invoice">
-
-                        <div class="o_form_label" colspan="2">
-                            Upload your invoice
-                        </div>
-
-                        <p>
-                            Reduce manual data entry, save time, and improve accuracy.
-                            Upload a clear invoice image or PDF to begin OCR processing.
-                        </p>
-
-                        <field name="file" filename="name" widget="image" required="1"/>
-                    </group>
-
-                    <!-- Basic Document Information -->
-                    <group string="Document Details" col="2">
-                        <field name="name"/>
-                        <field name="upload_date" readonly="1"/>
-                        <field name="user_id" readonly="1"/>
-                        <field name="doc_type" readonly="1"/>
-                    </group>
-
-                </sheet>
-            </form>
-
-        </field>
-    </record>
+  <record id="view_ocr_invoice_form" model="ir.ui.view">
+    <field name="name">ocr.invoice.form</field>
+    <field name="model">ocr.document</field>
+    <field name="arch" type="xml">
+      <form string="Upload Invoice">
+        <sheet>
+          <group>
+            <field name="doc_type" readonly="1"/>
+            <field name="name"/>
+            <field name="file" required="1"/>
+          </group>
+        </sheet>
+      </form>
+    </field>
+  </record>
 </odoo>
