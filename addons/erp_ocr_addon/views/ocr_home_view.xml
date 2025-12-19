@@ -1,47 +1,68 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <record id="view_ocr_home_form" model="ir.ui.view">
-        <field name="name">ocr.home.form</field>
-        <field name="model">ocr.dashboard</field>
-        <field name="arch" type="xml">
+  <record id="view_ocr_home_form" model="ir.ui.view">
+    <field name="name">ocr.home.form</field>
+    <field name="model">ocr.document</field>
+    <field name="arch" type="xml">
+      <form string="Clareo OCR Finance">
+        <sheet>
 
-            <form string="Clareo">
-                <sheet>
-                    <group>
-                        <h1>Clareo OCR Finance</h1>
+          <div style="width:100%; display:flex; justify-content:center;">
+            <div style="max-width:1100px; width:100%; padding:24px 10px;">
 
-                        <p>
-                            Clareo automates invoice and receipt processing inside Odoo
-                            by converting uploaded documents into clean structured data.
-                        </p>
+              <!-- OPTION A: clean header -->
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:16px;">
+                <div>
+                  <h1 style="font-size:30px; margin:0; font-weight:700;">Clareo OCR Finance</h1>
+                  <p style="margin:6px 0 0; color:#6b7280; font-size:14px;">
+                    Upload invoices/receipts → extract fields → review → export (no posting to accounting).
+                  </p>
+                </div>
 
-                        <separator string="Quick Actions"/>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                  <button string="Upload Invoice"
+                          type="action"
+                          name="%(erp_ocr_addon.action_upload_invoice)d"
+                          class="btn btn-primary"
+                          style="min-width:170px; height:42px; font-size:14px;"/>
+                  <button string="Upload Receipt"
+                          type="action"
+                          name="%(erp_ocr_addon.action_upload_receipt)d"
+                          class="btn btn-primary"
+                          style="min-width:170px; height:42px; font-size:14px;"/>
+                  <button string="History"
+                          type="action"
+                          name="%(erp_ocr_addon.action_ocr_document_history)d"
+                          class="btn btn-secondary"
+                          style="min-width:140px; height:42px; font-size:14px;"/>
+                </div>
+              </div>
 
-                        <group col="2">
-                            <button string="Upload Invoice"
-                                    type="action"
-                                    name="%(action_upload_invoice)d"
-                                    class="btn-primary"/>
+              <hr style="border:0; border-top:1px solid #e5e7eb; margin:18px 0;"/>
 
-                            <button string="Upload Receipt"
-                                    type="action"
-                                    name="%(action_upload_receipt)d"
-                                    class="btn-primary"/>
-                        </group>
+              <!-- Simple info card -->
+              <div style="border:1px solid #e5e7eb; border-radius:12px; padding:16px; background:#fff;">
+                <div style="display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+                  <div>
+                    <div style="font-weight:600; margin-bottom:6px;">What this does</div>
+                    <ul style="margin:0; padding-left:18px; color:#374151;">
+                      <li>Extracts structured fields from uploaded invoice/receipt images</li>
+                      <li>Keeps OCR score + raw text for debugging</li>
+                      <li>Lets you export reviewed data to CSV for Excel</li>
+                    </ul>
+                  </div>
+                  <div style="color:#6b7280; font-size:13px; max-width:420px;">
+                    Note: This is not the Odoo invoicing app. It doesn’t create/post accounting entries.
+                    It prepares clean data from documents for later ERP use.
+                  </div>
+                </div>
+              </div>
 
-                        <group col="2">
-                            <button string="View History"
-                                    type="action"
-                                    name="%(action_ocr_document_history)d"/>
+            </div>
+          </div>
 
-                            <button string="Open Dashboard"
-                                    type="action"
-                                    name="%(action_ocr_dashboard_analytics)d"/>
-                        </group>
-                    </group>
-                </sheet>
-            </form>
-
-        </field>
-    </record>
+        </sheet>
+      </form>
+    </field>
+  </record>
 </odoo>

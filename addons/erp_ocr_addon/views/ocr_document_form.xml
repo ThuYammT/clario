@@ -1,64 +1,137 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <record id="view_ocr_document_form" model="ir.ui.view">
-        <field name="name">ocr.document.form</field>
-        <field name="model">ocr.document</field>
-        <field name="arch" type="xml">
-            <form string="OCR Document">
-                <sheet>
-                    <!-- HEADER INFO -->
-                    <group>
-                        <group>
-                            <field name="name"/>
-                            <field name="doc_type"/>
-                            <field name="status" readonly="1"/>
-                            <field name="upload_date" readonly="1"/>
-                            <field name="user_id" readonly="1"/>
-                            <field name="progress" widget="progressbar" readonly="1"/>
-                        </group>
+  <record id="view_ocr_document_form" model="ir.ui.view">
+    <field name="name">ocr.document.form</field>
+    <field name="model">ocr.document</field>
+    <field name="arch" type="xml">
 
-                        <!-- FILE UPLOAD + PREVIEW -->
-                        <group string="File">
-                            <field name="file" filename="name"/>
-                            <!-- Image preview of the same file (readonly) -->
-                            <field name="file" widget="image" class="oe_avatar" readonly="1"/>
-                        </group>
-                    </group>
+      <form string="OCR Document">
 
-                    <!-- OCR ACTIONS -->
-                    <group string="OCR Actions">
-                        <button name="action_run_ocr"
-                                type="object"
-                                string="Run OCR"
-                                class="btn-primary"/>
-                    </group>
+        <!-- HEADER -->
+        <header>
+          <button name="action_run_ocr"
+                  type="object"
+                  string="Run OCR"
+                  class="btn-primary"/>
 
-                    <!-- RESULTS -->
-                    <notebook>
-                        <page string="Structured Result">
-                            <group>
-                                <group>
-                                    <field name="vendor_name"/>
-                                    <field name="invoice_date"/>
-                                </group>
-                                <group>
-                                    <field name="total_amount"/>
-                                    <field name="vat_amount"/>
-                                    <field name="confidence_score" readonly="1"/>
-                                </group>
-                            </group>
-                        </page>
+          <button name="action_view_image"
+                  type="object"
+                  string="View Full Image"
+                  class="btn-secondary"/>
 
-                        <page string="Raw OCR Text">
-                            <field name="extracted_text" nolabel="1"/>
-                        </page>
+          <field name="status"
+                 widget="statusbar"
+                 statusbar_visible="uploaded,processing,completed,error"/>
+        </header>
 
-                        <page string="Extraction Log">
-                            <field name="extraction_log" nolabel="1"/>
-                        </page>
-                    </notebook>
-                </sheet>
-            </form>
-        </field>
-    </record>
+        <sheet>
+
+          <!-- TITLE -->
+          <div style="display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+            <div>
+              <h1 style="font-size:28px; font-weight:700;">
+                <field name="name" nolabel="1"/>
+              </h1>
+              <div style="color:#6b7280; font-size:13px;">
+                <span>Type:</span> <field name="doc_type" nolabel="1"/>
+                <span style="margin-left:12px;">Uploaded:</span> <field name="upload_date" nolabel="1"/>
+                <span style="margin-left:12px;">By:</span> <field name="user_id" nolabel="1"/>
+              </div>
+            </div>
+
+            <group col="2">
+              <field name="confidence_score" readonly="1"/>
+              <field name="progress" widget="progressbar" readonly="1"/>
+            </group>
+          </div>
+
+          <hr/>
+
+          <!-- MAIN BODY -->
+          <div style="display:flex; gap:20px; flex-wrap:wrap;">
+
+            <!-- LEFT -->
+            <div style="flex:1; min-width:650px;">
+              <notebook>
+
+                <page string="Header / Parties">
+                  <group col="2">
+                    <field name="customer_name"/>
+                    <field name="supplier_name"/>
+                    <field name="vendor_name"/>
+                    <field name="seller_id"/>
+                    <field name="company_issued"/>
+                    <field name="tax_id"/>
+                    <field name="vendor_address"/>
+                    <field name="vendor_phone"/>
+                  </group>
+                </page>
+
+                <page string="Document Info">
+                  <group col="2">
+                    <field name="invoice_date"/>
+                    <field name="receipt_date"/>
+                    <field name="receipt_number"/>
+                    <field name="reference_number"/>
+                  </group>
+                </page>
+
+                <page string="Items">
+                  <field name="line_ids">
+                    <tree editable="bottom">
+                      <field name="item_number"/>
+                      <field name="item_name"/>
+                      <field name="description"/>
+                      <field name="quantity"/>
+                      <field name="unit_price"/>
+                      <field name="line_total" readonly="1"/>
+                    </tree>
+                  </field>
+                </page>
+
+                <page string="Amounts">
+                  <group col="2">
+                    <field name="subtotal_amount"/>
+                    <field name="discount_amount"/>
+                    <field name="vat_percent"/>
+                    <field name="vat_amount"/>
+                    <field name="total_amount"/>
+                  </group>
+                </page>
+
+                <page string="Raw OCR Text">
+                  <field name="extracted_text" nolabel="1"
+                         style="min-height:320px;"/>
+                </page>
+
+                <page string="Extraction Log">
+                  <field name="extraction_log" nolabel="1"
+                         style="min-height:320px;"/>
+                </page>
+
+              </notebook>
+            </div>
+
+            <!-- RIGHT IMAGE -->
+            <div style="width:420px; min-width:320px;">
+              <div style="border:1px solid #e5e7eb; border-radius:12px; padding:12px;">
+                <div style="font-weight:600; margin-bottom:10px;">
+                  Uploaded Document
+                </div>
+
+                <!-- ODOO 17 SAFE IMAGE FIELD -->
+                <field name="file" widget="image" class="oe_avatar">
+                  <attribute name="readonly">status != 'uploaded'</attribute>
+                </field>
+
+              </div>
+            </div>
+
+          </div>
+
+        </sheet>
+      </form>
+
+    </field>
+  </record>
 </odoo>

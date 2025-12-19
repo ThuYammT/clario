@@ -1,45 +1,41 @@
 # -*- coding: utf-8 -*-
 {
-    "name": "ERP OCR Addon",
-    "summary": "Upload invoices/receipts → OCR extraction → auto-fill Accounting & Expenses.",
-    "version": "1.0.4",
-    "category": "Tools",
-    "author": "Your Name",
-    "website": "https://www.example.com",
+    "name": "Clareo OCR Finance",
+    "summary": "Invoice & Receipt OCR Processing (Extract → Review → Export)",
+    "version": "1.0",
+    "category": "Accounting",
+    "author": "Your Team",
     "license": "LGPL-3",
-
-    "depends": [
-        "base",
-        "account",
-        "hr_expense"
-    ],
+    "depends": ["base", "web"],
+    "installable": True,
+    "application": True,
 
     "data": [
-        # 1) Security
+        # Security
         "security/ir.model.access.csv",
 
-        # 2) Sequences
+        # Sequences
         "data/ocr_sequences.xml",
 
-        # 3) Actions and views
-        "views/ocr_actions.xml",
-        "views/ocr_home_view.xml",
+        # Upload forms FIRST
+        "views/ocr_invoice_form.xml",
+        "views/ocr_receipt_form.xml",
 
-        # Main document views (tree + search + form)
+        # Core views
         "views/ocr_document_tree.xml",
         "views/ocr_document_search.xml",
         "views/ocr_document_form.xml",
 
-        # Dashboard
+        # Optional dashboard
         "views/ocr_dashboard_views.xml",
 
-        # (Optional) Wizard XML if you still use it and it's valid
-        # "wizard/ocr_preview_wizard.xml",
+        # Actions AFTER all views
+        "views/ocr_actions.xml",
 
-        # Menus (last)
+        # Home view AFTER actions
+        "views/ocr_home_view.xml",
+
+        # Menus LAST
         "views/menus.xml",
     ],
-
-    "installable": True,
-    "application": True,
 }

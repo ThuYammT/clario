@@ -1,28 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="view_ocr_document_tree" model="ir.ui.view">
-        <field name="name">ocr.document.tree</field>
-        <field name="model">ocr.document</field>
-        <field name="arch" type="xml">
-            <tree string="Document History">
-                <field name="doc_type"/>
-                <field name="name"/>
-                <field name="status"/>
-                <field name="upload_date"/>
-                <field name="user_id"/>
-                <field name="confidence_score"/>
-                <field name="total_amount"/>
+  <record id="view_ocr_document_tree" model="ir.ui.view">
+    <field name="name">ocr.document.tree</field>
+    <field name="model">ocr.document</field>
+    <field name="arch" type="xml">
+      <tree string="Document History">
+        <field name="doc_type"/>
+        <field name="name"/>
+        <field name="status"/>
+        <field name="upload_date"/>
+        <field name="vendor_name"/>
+        <field name="total_amount"/>
+        <field name="confidence_score"/>
 
-                <button name="action_view_image"
-                        string="View"
-                        type="object"
-                        icon="fa-eye"/>
-
-                <button name="action_rerun_ocr"
-                        string="Re-run OCR"
-                        type="object"
-                        icon="fa-refresh"/>
-            </tree>
-        </field>
-    </record>
+        <button name="action_view_image" string="View" type="object" icon="fa-eye"/>
+        <button name="action_rerun_ocr" string="Re-run OCR" type="object" icon="fa-refresh"/>
+      </tree>
+    </field>
+  </record>
 </odoo>

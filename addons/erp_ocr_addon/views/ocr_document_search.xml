@@ -1,24 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="view_ocr_document_search" model="ir.ui.view">
-        <field name="name">ocr.document.search</field>
-        <field name="model">ocr.document</field>
-        <field name="arch" type="xml">
-            <search string="Search OCR Documents">
-                <field name="name"/>
-                <field name="vendor_name"/>
-                <field name="doc_type"/>
-                <field name="status"/>
+  <record id="view_ocr_document_search" model="ir.ui.view">
+    <field name="name">ocr.document.search</field>
+    <field name="model">ocr.document</field>
+    <field name="arch" type="xml">
+      <search string="Search OCR Documents">
+        <field name="name"/>
+        <field name="vendor_name"/>
+        <field name="doc_type"/>
+        <field name="status"/>
 
-                <filter string="Invoices" name="filter_invoice"
-                        domain="[('doc_type', '=', 'invoice')]"/>
-                <filter string="Receipts" name="filter_receipt"
-                        domain="[('doc_type', '=', 'receipt')]"/>
-                <filter string="Completed" name="filter_completed"
-                        domain="[('status', '=', 'completed')]"/>
-                <filter string="Errors" name="filter_error"
-                        domain="[('status', '=', 'error')]"/>
-            </search>
-        </field>
-    </record>
+        <filter string="Invoices" name="filter_invoice" domain="[('doc_type', '=', 'invoice')]"/>
+        <filter string="Receipts" name="filter_receipt" domain="[('doc_type', '=', 'receipt')]"/>
+        <filter string="Completed" name="filter_completed" domain="[('status', '=', 'completed')]"/>
+        <filter string="Errors" name="filter_error" domain="[('status', '=', 'error')]"/>
+      </search>
+    </field>
+  </record>
 </odoo>

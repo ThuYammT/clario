@@ -1,52 +1,74 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-
     <record id="view_ocr_dashboard_form" model="ir.ui.view">
         <field name="name">ocr.dashboard.form</field>
         <field name="model">ocr.dashboard</field>
         <field name="arch" type="xml">
 
-            <form string="OCR Dashboard">
+            <form string="Clareo Dashboard">
                 <sheet>
 
-                    <group string="Overview" col="3">
+                    <h2 style="margin-bottom:20px;">Overview</h2>
 
-                        <group>
-                            <div class="o_form_label">Invoices</div>
-                            <field name="invoice_count" readonly="1"/>
-                        </group>
+                    <div style="display:flex; flex-wrap:wrap; gap:20px;">
 
-                        <group>
-                            <div class="o_form_label">Receipts</div>
-                            <field name="receipt_count" readonly="1"/>
-                        </group>
+                        <div class="kpi-card kpi-blue">
+                            <h4>Invoice Count</h4>
+                            <field name="invoice_count" readonly="1"
+                                   style="font-size:24px; font-weight:bold;"/>
+                        </div>
 
-                        <group>
-                            <div class="o_form_label">Completed</div>
-                            <field name="completed_count" readonly="1"/>
-                        </group>
+                        <div class="kpi-card kpi-purple">
+                            <h4>Receipt Count</h4>
+                            <field name="receipt_count" readonly="1"
+                                   style="font-size:24px; font-weight:bold;"/>
+                        </div>
 
-                        <group>
-                            <div class="o_form_label">Errors</div>
-                            <field name="error_count" readonly="1"/>
-                        </group>
+                        <div class="kpi-card kpi-green">
+                            <h4>Completed</h4>
+                            <field name="completed_count" readonly="1"
+                                   style="font-size:24px; font-weight:bold;"/>
+                        </div>
 
-                        <group>
-                            <div class="o_form_label">Average Confidence</div>
-                            <field name="avg_confidence" readonly="1"/>
-                        </group>
+                        <div class="kpi-card kpi-red">
+                            <h4>Error Count</h4>
+                            <field name="error_count" readonly="1"
+                                   style="font-size:24px; font-weight:bold;"/>
+                        </div>
 
-                        <group>
-                            <div class="o_form_label">Total Amount</div>
-                            <field name="total_amount" readonly="1"/>
-                        </group>
+                        <div class="kpi-card kpi-orange">
+                            <h4>Avg Confidence</h4>
+                            <field name="avg_confidence" readonly="1"
+                                   style="font-size:24px; font-weight:bold;"/>
+                        </div>
 
-                    </group>
+                        <div class="kpi-card kpi-dark">
+                            <h4>Total Amount</h4>
+                            <field name="total_amount" readonly="1"
+                                   style="font-size:24px; font-weight:bold;"/>
+                        </div>
+                    </div>
+
+                    <style>
+                        .kpi-card {
+                            flex:1;
+                            min-width:230px;
+                            padding:20px;
+                            border-radius:12px;
+                            color:white;
+                            box-shadow:0 2px 5px rgba(0,0,0,0.1);
+                        }
+                        .kpi-blue   { background:#3b82f6; }
+                        .kpi-purple { background:#8b5cf6; }
+                        .kpi-green  { background:#22c55e; }
+                        .kpi-red    { background:#ef4444; }
+                        .kpi-orange { background:#f59e0b; }
+                        .kpi-dark   { background:#374151; }
+                    </style>
 
                 </sheet>
             </form>
 
         </field>
     </record>
-
 </odoo>
