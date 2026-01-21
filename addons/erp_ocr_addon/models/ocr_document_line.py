@@ -5,18 +5,17 @@ from odoo import models, fields, api
 class OCRDocumentLine(models.Model):
     _name = "ocr.document.line"
     _description = "OCR Document Line"
+    _order = "id"
 
     document_id = fields.Many2one(
         "ocr.document",
-        string="Document",
-        required=True,
         ondelete="cascade",
+        required=True,
     )
 
     item_number = fields.Char()
     item_name = fields.Char()
     description = fields.Text()
-
     quantity = fields.Float(default=1.0)
     unit_price = fields.Float()
 
@@ -27,5 +26,5 @@ class OCRDocumentLine(models.Model):
 
     @api.depends("quantity", "unit_price")
     def _compute_line_total(self):
-        for rec in self:
-            rec.line_total = rec.quantity * rec.unit_price
+        for line in self:
+            line.line_total = (line.quantity or 0.0) * (line.unit_price or 0.0)

@@ -4,142 +4,207 @@ import re
 
 class OCRParser:
     """
-    Generic, layout-driven invoice/receipt parser.
-    Works across languages, vendors, and formats.
+    Enterprise-grade OCR parser
+    Supports:
+    - Broken HTML tables (Typhoon OCR)
+    - Thai + English invoices
+    - Confidence + debug logs
     """
 
-    # =========================
-    # TEXT NORMALIZATION
-    # =========================
+    # ======================================================
+    # NORMALIZE RAW OCR TEXT (CRITICAL)
+    # ======================================================
     @staticmethod
-    def normalize(text):
+    def normalize(text: str) -> list:
+        if not text:
+            return []
+
+        # Fix broken <tdXXX → <td>XXX
+        text = re.sub(r"<td([^>])", r"<td>\1", text)
+        text = re.sub(r"</td([^>])", r"</td>", text)
+
+        # Fix <tr<td → <tr><td
+        text = text.replace("<tr<td", "<tr><td")
+
+        # Force line breaks
+        text = text.replace("</td>", "</td>\n")
+        text = text.replace("</tr>", "</tr>\n")
+
+        # Remove table wrappers
+        text = re.sub(r"</?table.*?>", "", text)
+
+        # Normalize whitespace
         text = text.replace("\r", "\n")
         text = re.sub(r"[ \t]+", " ", text)
         text = re.sub(r"\n{2,}", "\n", text)
-        return text.strip()
 
-    # =========================
-    # ZONE SPLITTING (POSITIONAL)
-    # =========================
+        return [l.strip() for l in text.splitlines() if l.strip()]
+
+    # ======================================================
+    # PARSE AMOUNT
+    # ======================================================
     @staticmethod
-    def split_zones(lines):
-        """
-        Split document into semantic zones by vertical position.
-        """
-        n = len(lines)
-        if n == 0:
-            return [], [], []
+    def parse_amount(text: str) -> float:
+        m = re.search(r"[0-9,]+\.\d{2}", text)
+        return float(m.group().replace(",", "")) if m else 0.0
 
-        top = lines[: int(n * 0.35)]
-        middle = lines[int(n * 0.35): int(n * 0.70)]
-        bottom = lines[int(n * 0.70):]
-
-        return top, middle, bottom
-
-    # =========================
-    # HELPER: FIND NEAREST VALUE
-    # =========================
+    # ======================================================
+    # NORMALIZE DATE (DD/MM/YYYY)
+    # ======================================================
     @staticmethod
-    def next_value(lines, idx):
-        """
-        Return the nearest meaningful value line after a label.
-        """
-        for j in range(idx + 1, min(idx + 6, len(lines))):
-            if re.search(r"[0-9A-Za-zก-๙]", lines[j]):
-                return lines[j]
-        return ""
+    def normalize_date(text: str):
+        m = re.search(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", text)
+        if not m:
+            return None
+        d, mth, y = m.groups()
+        return f"{y}-{mth.zfill(2)}-{d.zfill(2)}"
 
-    # =========================
-    # HELPER: PARSE FLOAT
-    # =========================
+    # ======================================================
+    # PARSE ITEMS (SLIDING WINDOW)
+    # ======================================================
     @staticmethod
-    def parse_amount(text):
-        try:
-            return float(text.replace(",", ""))
-        except Exception:
-            return 0.0
+    def parse_items(lines: list, log: list) -> list:
+        items = []
 
-    # =========================
-    # MAIN EXTRACTION
-    # =========================
+        for i in range(len(lines) - 4):
+            window = lines[i:i + 5]
+
+            if (
+                window[0].isdigit()
+                and re.match(r"\d+(\.\d+)?", window[2])
+                and re.match(r"\d+(\.\d+)?", window[3])
+                and re.match(r"\d+(\.\d+)?", window[4])
+            ):
+                try:
+                    item = {
+                        "item_number": window[0],
+                        "description": window[1],
+                        "quantity": float(window[2]),
+                        "unit_price": float(window[3]),
+                        "line_total": float(window[4]),
+                    }
+                    items.append(item)
+                    log.append(
+                        f"[ITEM] {item['description']} | "
+                        f"Qty={item['quantity']} | "
+                        f"Unit={item['unit_price']} | "
+                        f"Total={item['line_total']}"
+                    )
+                except Exception:
+                    continue
+
+        if items:
+            log.append(f"[ITEMS] Parsed {len(items)} item(s)")
+        else:
+            log.append("[MISS] No item rows detected")
+
+        return items
+
+    # ======================================================
+    # MAIN EXTRACTOR
+    # ======================================================
     @staticmethod
-    def extract_fields(raw_text):
-        text = OCRParser.normalize(raw_text)
-        lines = [l.strip() for l in text.split("\n") if l.strip()]
+    def extract_fields(raw_text: str) -> dict:
+        log = []
+        confidence = 0.0
 
-        top, middle, bottom = OCRParser.split_zones(lines)
+        lines = OCRParser.normalize(raw_text)
 
-        fields = {
-            # Header
-            "vendor_name": "",
-            "customer_name": "",
-            "tax_id": "",
-            "invoice_number": "",
-            "invoice_date": "",
+        vendor = ""
+        customer = ""
+        tax_id = ""
+        receipt_no = ""
+        invoice_date = None
 
-            # Amounts
-            "subtotal_amount": 0.0,
-            "discount_amount": 0.0,
-            "vat_amount": 0.0,
-            "total_amount": 0.0,
+        # ---------------- HEADER ----------------
+        for line in lines:
+            l = line.lower()
+
+            if not vendor and re.search(r"co\.?,?\s*ltd|บริษัท", line, re.I):
+                vendor = line.strip()
+                log.append(f"[HEADER] Vendor: {vendor}")
+                confidence += 0.2
+
+            if not customer and "customer name" in l:
+                customer = line.split(":", 1)[-1].strip()
+                log.append(f"[HEADER] Customer: {customer}")
+
+            if not tax_id and "tax id" in l:
+                m = re.search(r"\d{10,13}", line)
+                if m:
+                    tax_id = m.group()
+                    log.append(f"[HEADER] Tax ID: {tax_id}")
+                    confidence += 0.2
+
+            if not receipt_no and "invoice" in l and "no" in l:
+                receipt_no = line.split(":", 1)[-1].strip()
+                log.append(f"[HEADER] Invoice No: {receipt_no}")
+
+            if "date" in l:
+                nd = OCRParser.normalize_date(line)
+                if nd:
+                    invoice_date = nd
+                    log.append(f"[HEADER] Date: {nd}")
+                    confidence += 0.1
+
+        # ---------------- ITEMS ----------------
+        items = OCRParser.parse_items(lines, log)
+        if items:
+            confidence += 0.2
+
+        # ---------------- TOTALS ----------------
+        subtotal = None
+        discount = 0.0
+        vat = 0.0
+        total = None
+
+        for line in lines:
+            l = line.lower()
+
+            if "total amount" in l and "vat" in l:
+                total = OCRParser.parse_amount(line)
+                log.append(f"[TOTALS] Total (Incl VAT): {total}")
+                confidence += 0.2
+
+            elif l.startswith("discount"):
+                discount = OCRParser.parse_amount(line)
+                log.append(f"[TOTALS] Discount: {discount}")
+
+            elif "net amount after discount" in l:
+                subtotal = OCRParser.parse_amount(line)
+                log.append(f"[TOTALS] Net after discount: {subtotal}")
+
+            elif "vat amount" in l:
+                vat = OCRParser.parse_amount(line)
+                log.append(f"[TOTALS] VAT: {vat}")
+                confidence += 0.2
+
+            elif "net amount (excluded vat)" in l and subtotal is None:
+                subtotal = OCRParser.parse_amount(line)
+                log.append(f"[TOTALS] Net excl VAT: {subtotal}")
+
+        if subtotal and vat and total:
+            if abs((subtotal + vat) - total) <= 1.0:
+                log.append("[OK] Totals validated")
+                confidence += 0.1
+            else:
+                log.append("[WARN] Totals mismatch")
+                confidence -= 0.2
+
+        confidence = max(0.0, min(1.0, confidence))
+        log.append(f"[FINAL] Confidence Score = {round(confidence, 2)}")
+
+        return {
+            "vendor_name": vendor,
+            "customer_name": customer,
+            "tax_id": tax_id,
+            "receipt_number": receipt_no,
+            "invoice_date": invoice_date,
+            "subtotal_amount": subtotal,
+            "discount_amount": discount,
+            "vat_amount": vat,
+            "total_amount": total,
+            "items": items,
+            "confidence_score": round(confidence, 2),
+            "extraction_log": "\n".join(log),
         }
-
-        # =========================
-        # TOP ZONE — HEADER
-        # =========================
-        for i, line in enumerate(top):
-
-            # Vendor name heuristic:
-            # First long textual line (not numeric)
-            if not fields["vendor_name"]:
-                if len(line) > 4 and not re.search(r"\d{4,}", line):
-                    fields["vendor_name"] = line
-
-            # Tax ID (numeric dominant)
-            if re.search(r"(tax|vat|ภาษี)", line, re.I):
-                candidate = OCRParser.next_value(top, i)
-                m = re.search(r"\d{10,13}", candidate)
-                if m:
-                    fields["tax_id"] = m.group()
-
-            # Invoice / receipt number
-            if re.search(r"(invoice|receipt|no\.|เลขที่)", line, re.I):
-                fields["invoice_number"] = OCRParser.next_value(top, i)
-
-            # Date
-            if re.search(r"(date|วันที่)", line, re.I):
-                candidate = OCRParser.next_value(top, i)
-                m = re.search(r"\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}", candidate)
-                if m:
-                    fields["invoice_date"] = m.group()
-
-            # Customer name
-            if re.search(r"(customer|ลูกค้า)", line, re.I):
-                fields["customer_name"] = OCRParser.next_value(top, i)
-
-        # =========================
-        # BOTTOM ZONE — TOTALS
-        # =========================
-        for i, line in enumerate(bottom):
-
-            # TOTAL (largest / final amount)
-            if re.search(r"(total|grand|รวม)", line, re.I):
-                val = OCRParser.next_value(bottom, i)
-                fields["total_amount"] = OCRParser.parse_amount(val)
-
-            # VAT
-            if re.search(r"(vat|ภาษี)", line, re.I):
-                val = OCRParser.next_value(bottom, i)
-                fields["vat_amount"] = OCRParser.parse_amount(val)
-
-            # Discount
-            if re.search(r"(discount|ส่วนลด)", line, re.I):
-                val = OCRParser.next_value(bottom, i)
-                fields["discount_amount"] = OCRParser.parse_amount(val)
-
-            # Subtotal / Net
-            if re.search(r"(net|subtotal|ก่อนภาษี)", line, re.I):
-                val = OCRParser.next_value(bottom, i)
-                fields["subtotal_amount"] = OCRParser.parse_amount(val)
-
-        return fields

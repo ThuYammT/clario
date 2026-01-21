@@ -13,8 +13,6 @@
         <field name="total_amount"/>
         <field name="confidence_score"/>
 
-        <button name="action_view_image" string="View" type="object" icon="fa-eye"/>
-        <button name="action_rerun_ocr" string="Re-run OCR" type="object" icon="fa-refresh"/>
       </tree>
     </field>
   </record>

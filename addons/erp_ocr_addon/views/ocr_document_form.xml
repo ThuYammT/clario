@@ -7,17 +7,11 @@
 
       <form string="OCR Document">
 
-        <!-- HEADER -->
         <header>
           <button name="action_run_ocr"
                   type="object"
                   string="Run OCR"
                   class="btn-primary"/>
-
-          <button name="action_view_image"
-                  type="object"
-                  string="View Full Image"
-                  class="btn-secondary"/>
 
           <field name="status"
                  widget="statusbar"
@@ -26,108 +20,75 @@
 
         <sheet>
 
-          <!-- TITLE -->
-          <div style="display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap;">
-            <div>
-              <h1 style="font-size:28px; font-weight:700;">
-                <field name="name" nolabel="1"/>
-              </h1>
-              <div style="color:#6b7280; font-size:13px;">
-                <span>Type:</span> <field name="doc_type" nolabel="1"/>
-                <span style="margin-left:12px;">Uploaded:</span> <field name="upload_date" nolabel="1"/>
-                <span style="margin-left:12px;">By:</span> <field name="user_id" nolabel="1"/>
-              </div>
-            </div>
+          <group>
+            <field name="name"/>
+            <field name="doc_type"/>
+            <field name="upload_date"/>
+            <field name="user_id"/>
+          </group>
 
-            <group col="2">
-              <field name="confidence_score" readonly="1"/>
-              <field name="progress" widget="progressbar" readonly="1"/>
-            </group>
-          </div>
+          <group col="2">
+            <field name="confidence_score" readonly="1"/>
+            <field name="progress" widget="progressbar" readonly="1"/>
+          </group>
 
-          <hr/>
+          <notebook>
 
-          <!-- MAIN BODY -->
-          <div style="display:flex; gap:20px; flex-wrap:wrap;">
+            <page string="Header / Parties">
+              <group col="2">
+                <field name="customer_name"/>
+                <field name="vendor_name"/>
+                <field name="tax_id"/>
+                <field name="vendor_address"/>
+                <field name="vendor_phone"/>
+              </group>
+            </page>
 
-            <!-- LEFT -->
-            <div style="flex:1; min-width:650px;">
-              <notebook>
+            <page string="Document Info">
+              <group col="2">
+                <field name="invoice_date"/>
+                <field name="receipt_date"/>
+                <field name="receipt_number"/>
+                <field name="reference_number"/>
+              </group>
+            </page>
 
-                <page string="Header / Parties">
-                  <group col="2">
-                    <field name="customer_name"/>
-                    <field name="supplier_name"/>
-                    <field name="vendor_name"/>
-                    <field name="seller_id"/>
-                    <field name="company_issued"/>
-                    <field name="tax_id"/>
-                    <field name="vendor_address"/>
-                    <field name="vendor_phone"/>
-                  </group>
-                </page>
+            <page string="Items">
+              <field name="line_ids">
+                <tree editable="bottom">
+                  <field name="item_number"/>
+                  <field name="item_name"/>
+                  <field name="description"/>
+                  <field name="quantity"/>
+                  <field name="unit_price"/>
+                  <field name="line_total" readonly="1"/>
+                </tree>
+              </field>
+            </page>
 
-                <page string="Document Info">
-                  <group col="2">
-                    <field name="invoice_date"/>
-                    <field name="receipt_date"/>
-                    <field name="receipt_number"/>
-                    <field name="reference_number"/>
-                  </group>
-                </page>
+            <page string="Amounts">
+              <group col="2">
+                <field name="subtotal_amount"/>
+                <field name="discount_amount"/>
+                <field name="vat_percent"/>
+                <field name="vat_amount"/>
+                <field name="total_amount"/>
+              </group>
+            </page>
 
-                <page string="Items">
-                  <field name="line_ids">
-                    <tree editable="bottom">
-                      <field name="item_number"/>
-                      <field name="item_name"/>
-                      <field name="description"/>
-                      <field name="quantity"/>
-                      <field name="unit_price"/>
-                      <field name="line_total" readonly="1"/>
-                    </tree>
-                  </field>
-                </page>
+            <page string="Raw OCR Text">
+              <field name="extracted_text" nolabel="1"/>
+            </page>
 
-                <page string="Amounts">
-                  <group col="2">
-                    <field name="subtotal_amount"/>
-                    <field name="discount_amount"/>
-                    <field name="vat_percent"/>
-                    <field name="vat_amount"/>
-                    <field name="total_amount"/>
-                  </group>
-                </page>
+            <page string="Extraction Log">
+              <field name="extraction_log" nolabel="1"/>
+            </page>
 
-                <page string="Raw OCR Text">
-                  <field name="extracted_text" nolabel="1"
-                         style="min-height:320px;"/>
-                </page>
+          </notebook>
 
-                <page string="Extraction Log">
-                  <field name="extraction_log" nolabel="1"
-                         style="min-height:320px;"/>
-                </page>
-
-              </notebook>
-            </div>
-
-            <!-- RIGHT IMAGE -->
-            <div style="width:420px; min-width:320px;">
-              <div style="border:1px solid #e5e7eb; border-radius:12px; padding:12px;">
-                <div style="font-weight:600; margin-bottom:10px;">
-                  Uploaded Document
-                </div>
-
-                <!-- ODOO 17 SAFE IMAGE FIELD -->
-                <field name="file" widget="image" class="oe_avatar">
-                  <attribute name="readonly">status != 'uploaded'</attribute>
-                </field>
-
-              </div>
-            </div>
-
-          </div>
+          <group>
+            <field name="file" widget="image"/>
+          </group>
 
         </sheet>
       </form>
