@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+  <record id="view_ocr_document_form" model="ir.ui.view">
+    <field name="name">ocr.document.form</field>
+    <field name="model">ocr.document</field>
+    <field name="arch" type="xml">
+
+      <form string="OCR Document">
+
+        <!-- ================= HEADER ================= -->
+        <header>
+
+          <button
+            name="action_run_ocr"
+            type="object"
+            string="Run OCR"
+            class="btn-primary"
+            invisible="state not in ('draft','failed')"
+          />
+
+          <button
+            name="action_retry"
+            type="object"
+            string="Retry"
+            class="btn-secondary"
+            invisible="state != 'failed'"
+          />
+
+          <button
+            name="action_mark_reviewed"
+            type="object"
+            string="Mark Reviewed"
+            class="btn-outline-primary"
+            invisible="state != 'done'"
+          />
+
+          <!-- CREATE VENDOR BILL -->
+          <button
+            name="action_create_vendor_bill"
+            type="object"
+            string="Create Vendor Bill"
+            class="btn-primary"
+            invisible="state != 'done' or vendor_bill_id"
+          />
+
+          <!-- OPEN VENDOR BILL -->
+          <button
+            name="action_open_vendor_bill"
+            type="object"
+            string="Open Vendor Bill"
+            class="btn-secondary"
+            invisible="not vendor_bill_id"
+          />
+
+          <field
+            name="state"
+            widget="statusbar"
+            statusbar_visible="draft,processing,done,reviewed,failed"
+          />
+
+        </header>
+
+        <!-- ================= BODY ================= -->
+        <sheet>
+
+          <!-- Required hidden fields -->
+          <field name="vendor_bill_id" invisible="1"/>
+          <field name="file_filename" invisible="1"/>
+
+          <!-- ================= TITLE ================= -->
+          <div class="oe_title">
+            <h1>
+              <field name="name" readonly="1"/>
+            </h1>
+
+            <div class="text-muted"
+                 style="margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;">
+              <span><strong>Type:</strong> <field name="doc_type" readonly="1"/></span>
+              <span><strong>Doc No:</strong> <field name="document_number" readonly="1"/></span>
+              <span><strong>Date:</strong> <field name="document_date" readonly="1"/></span>
+              <span><strong>Confidence:</strong> <field name="confidence_score" readonly="1"/></span>
+            </div>
+          </div>
+
+          <!-- ================= CONTENT ================= -->
+          <div class="o_row" style="margin-top:14px; gap:14px;">
+
+            <!-- LEFT COLUMN -->
+            <div class="o_col-6"
+                 style="border:1px solid #e5e7eb;border-radius:14px;padding:14px;">
+              <h3 style="margin:0 0 10px 0;">Extracted Information</h3>
+
+              <notebook>
+
+                <page string="Parties">
+                  <group col="2">
+                    <separator string="Seller" colspan="2"/>
+                    <field name="seller_name"/>
+                    <field name="seller_tax_id"/>
+                    <field name="seller_address" colspan="2"/>
+                    <field name="seller_phone"/>
+                    <field name="seller_website"/>
+
+                    <separator string="Customer" colspan="2"/>
+                    <field name="customer_name"/>
+                    <field name="customer_tax_id"/>
+                    <field name="customer_address" colspan="2"/>
+                    <field name="customer_phone"/>
+                  </group>
+                </page>
+
+                <page string="Document Info">
+                  <group col="2">
+                    <field name="document_number"/>
+                    <field name="document_date"/>
+                    <field name="due_date"/>
+                    <field name="payment_terms"/>
+                    <field name="reference_number"/>
+                    <field name="currency" readonly="1"/>
+                  </group>
+                </page>
+
+                <page string="Line Items">
+                  <field name="line_ids" nolabel="1">
+                    <tree editable="bottom">
+                      <field name="sequence"/>
+                      <field name="product_code"/>
+                      <field name="description"/>
+                      <field name="quantity"/>
+                      <field name="unit_price"/>
+                      <field name="discount_amount"/>
+                      <field name="tax_rate"/>
+                      <field name="line_total"/>
+                    </tree>
+                  </field>
+                </page>
+
+                <page string="Totals">
+                  <group col="2">
+                    <field name="subtotal_excl_tax"/>
+                    <field name="total_discount"/>
+                    <field name="vat_rate"/>
+                    <field name="vat_amount"/>
+                    <field name="total_incl_tax"/>
+                    <field name="rounding_adjustment"/>
+                    <field name="amount_in_words" colspan="2"/>
+                  </group>
+                </page>
+
+                <page string="OCR Meta">
+                  <group col="2">
+                    <field name="ocr_provider" readonly="1"/>
+                    <field name="ocr_run_at" readonly="1"/>
+                    <field name="upload_date" readonly="1"/>
+                    <field name="user_id" readonly="1"/>
+                    <field name="file_sha256" readonly="1" colspan="2"/>
+                  </group>
+                </page>
+
+              </notebook>
+            </div>
+
+            <!-- RIGHT COLUMN -->
+            <div class="o_col-6"
+                 style="border:1px solid #e5e7eb;border-radius:14px;padding:14px;">
+              <h3 style="margin:0 0 10px 0;">Original Document</h3>
+
+              <div class="text-muted" style="margin-bottom:8px;">
+                Preview the original PDF/image to verify extraction.
+              </div>
+
+              <field
+                name="file"
+                filename="file_filename"
+                widget="pdf_viewer"
+                nolabel="1"
+              />
+
+              <notebook style="margin-top:14px;">
+                <page string="Extraction Log">
+                  <field name="extraction_log" nolabel="1" readonly="1"/>
+                </page>
+                <page string="Raw OCR Text">
+                  <field name="extracted_text" nolabel="1" readonly="1"/>
+                </page>
+                <page string="Errors">
+                  <field name="ocr_error_message" nolabel="1" readonly="1"/>
+                </page>
+              </notebook>
+
+            </div>
+
+          </div>
+
+        </sheet>
+      </form>
+
+    </field>
+  </record>
+
+</odoo>

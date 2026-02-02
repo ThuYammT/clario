@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="ocr_document_search" model="ir.ui.view">
+    <field name="name">ocr.document.search</field>
+    <field name="model">ocr.document</field>
+    <field name="arch" type="xml">
+      <search string="OCR Documents">
+
+        <field name="name"/>
+        <field name="doc_type"/>
+        <field name="state"/>
+
+        <filter name="draft" string="Draft" domain="[('state','=','draft')]"/>
+        <filter name="processing" string="Processing" domain="[('state','=','processing')]"/>
+        <filter name="done" string="Done" domain="[('state','=','done')]"/>
+        <filter name="failed" string="Failed" domain="[('state','=','failed')]"/>
+
+        <group expand="0" string="Group By">
+          <filter name="group_by_state" string="State" context="{'group_by':'state'}"/>
+          <filter name="group_by_type" string="Document Type" context="{'group_by':'doc_type'}"/>
+        </group>
+
+      </search>
+    </field>
+  </record>
+</odoo>
