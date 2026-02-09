@@ -141,7 +141,7 @@ class OCRDocument(models.Model):
     )
 
     # ======================================================
-    # 9. ACCOUNTING LINK (IMPORTANT)
+    # 9. ACCOUNTING LINK
     # ======================================================
     vendor_bill_id = fields.Many2one(
         "account.move",
@@ -149,6 +149,30 @@ class OCRDocument(models.Model):
         readonly=True,
         copy=False,
     )
+
+    # ======================================================
+    # HELPERS
+    # ======================================================
+    def _normalize_phone(self, phone):
+        """
+        Normalize phone numbers to reduce duplicates and improve partner matching.
+        Keeps + sign if present; removes spaces, hyphens, parentheses.
+        """
+        if not phone:
+            return phone
+        phone = str(phone).strip()
+        # Remove common separators
+        for ch in [" ", "-", "(", ")", ".", "\t", "\n", "\r"]:
+            phone = phone.replace(ch, "")
+        return phone
+
+    def _safe_float(self, v):
+        try:
+            if v is None:
+                return None
+            return float(v)
+        except Exception:
+            return None
 
     # ======================================================
     # CREATE / WRITE
@@ -204,32 +228,57 @@ class OCRDocument(models.Model):
         }
 
     # ======================================================
-    # VENDOR BILL CREATION (ENTERPRISE SAFE)
+    # VENDOR BILL CREATION
     # ======================================================
+    def _find_or_create_vendor_partner(self):
+        self.ensure_one()
+
+        if not self.seller_name:
+            raise UserError(_("Seller information is missing."))
+
+        seller_vat = (self.seller_tax_id or "").strip() or False
+        seller_phone = self._normalize_phone(self.seller_phone)
+
+        # Prefer VAT match (best unique identifier), fallback to name
+        domain = [("supplier_rank", ">", 0)]
+        if seller_vat:
+            domain = [("vat", "=", seller_vat)] + domain
+        else:
+            domain = [("name", "=", self.seller_name)] + domain
+
+        partner = self.env["res.partner"].search(domain, limit=1)
+
+        if not partner:
+            partner = self.env["res.partner"].create(
+                {
+                    "name": self.seller_name,
+                    "vat": seller_vat,
+                    "phone": seller_phone,
+                    "website": self.seller_website,
+                    "supplier_rank": 1,
+                }
+            )
+        else:
+            # Light enrichment (don’t overwrite good data)
+            vals = {}
+            if seller_vat and not partner.vat:
+                vals["vat"] = seller_vat
+            if seller_phone and not partner.phone:
+                vals["phone"] = seller_phone
+            if self.seller_website and not partner.website:
+                vals["website"] = self.seller_website
+            if vals:
+                partner.write(vals)
+
+        return partner
+
     def action_create_vendor_bill(self):
         self.ensure_one()
 
         if self.vendor_bill_id:
             raise UserError(_("Vendor Bill already created."))
 
-        if not self.seller_name:
-            raise UserError(_("Seller information is missing."))
-
-        partner = self.env["res.partner"].search(
-            [("name", "=", self.seller_name), ("supplier_rank", ">", 0)],
-            limit=1,
-        )
-
-        if not partner:
-            partner = self.env["res.partner"].create(
-                {
-                    "name": self.seller_name,
-                    "vat": self.seller_tax_id,
-                    "phone": self.seller_phone,
-                    "website": self.seller_website,
-                    "supplier_rank": 1,
-                }
-            )
+        partner = self._find_or_create_vendor_partner()
 
         invoice_lines = []
         for line in self.line_ids:
@@ -248,16 +297,15 @@ class OCRDocument(models.Model):
         if not invoice_lines:
             raise UserError(_("No line items found."))
 
-        bill = self.env["account.move"].create(
-            {
-                "move_type": "in_invoice",
-                "partner_id": partner.id,
-                "invoice_date": self.document_date,
-                "invoice_origin": self.name,
-                "invoice_line_ids": invoice_lines,
-            }
-        )
+        bill_vals = {
+            "move_type": "in_invoice",
+            "partner_id": partner.id,
+            "invoice_date": self.document_date,
+            "invoice_origin": self.name,
+            "invoice_line_ids": invoice_lines,
+        }
 
+        bill = self.env["account.move"].create(bill_vals)
         self.vendor_bill_id = bill.id
 
         return {
@@ -300,7 +348,18 @@ class OCRDocument(models.Model):
                 raise UserError(_("No data returned from Azure."))
 
             currency_id = self._detect_currency(data.get("currency_code"))
+
             final_subtotal = data.get("vat_base_amount") or data.get("subtotal_amount")
+            subtotal_f = self._safe_float(final_subtotal) or 0.0
+            vat_f = self._safe_float(data.get("vat_amount")) or 0.0
+
+            # VAT rate (%)
+            vat_rate = 0.0
+            if subtotal_f > 0 and vat_f > 0:
+                vat_rate = round((vat_f / subtotal_f) * 100.0, 2)
+
+            seller_phone = self._normalize_phone(data.get("vendor_phone"))
+            customer_phone = self._normalize_phone(data.get("customer_phone"))
 
             self.write(
                 {
@@ -313,30 +372,34 @@ class OCRDocument(models.Model):
                     "seller_name": data.get("vendor_name"),
                     "seller_address": data.get("vendor_address"),
                     "seller_tax_id": data.get("vendor_tax_id"),
-                    "seller_phone": data.get("vendor_phone"),
+                    "seller_phone": seller_phone,
                     "seller_website": data.get("vendor_website"),
                     "customer_name": data.get("customer_name"),
                     "customer_address": data.get("customer_address"),
                     "customer_tax_id": data.get("customer_tax_id"),
-                    "customer_phone": data.get("customer_phone"),
+                    "customer_phone": customer_phone,
                     "document_number": data.get("invoice_id"),
                     "document_date": data.get("invoice_date"),
                     "due_date": data.get("due_date"),
                     "payment_terms": data.get("payment_terms"),
                     "reference_number": data.get("reference_number"),
+
+                    # IMPORTANT: Many2one should use currency_id in write
                     "currency": currency_id,
-                    "subtotal_excl_tax": final_subtotal,
-                    "total_discount": data.get("discount_amount"),
-                    "vat_amount": data.get("vat_amount"),
-                    "total_incl_tax": data.get("total_amount"),
+
+                    "subtotal_excl_tax": subtotal_f,
+                    "total_discount": self._safe_float(data.get("discount_amount")) or 0.0,
+                    "vat_amount": vat_f,
+                    "vat_rate": vat_rate,
+                    "total_incl_tax": self._safe_float(data.get("total_amount")) or 0.0,
                     "confidence_score": data.get("confidence_score", 0.99),
                 }
             )
 
-            self.line_ids.unlink()
-            lines = []
+            # Clear + re-add lines (enterprise-safe)
+            lines_cmds = [(5, 0, 0)]
             for item in data.get("items", []):
-                lines.append(
+                lines_cmds.append(
                     (
                         0,
                         0,
@@ -347,8 +410,8 @@ class OCRDocument(models.Model):
                         },
                     )
                 )
-            if lines:
-                self.write({"line_ids": lines})
+
+            self.write({"line_ids": lines_cmds})
 
         except Exception as e:
             _logger.exception("OCR Error")
