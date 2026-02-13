@@ -4,7 +4,6 @@ import base64
 import json
 import logging
 import hashlib
-from datetime import datetime
 
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
@@ -21,7 +20,7 @@ class OCRDocument(models.Model):
     _order = "create_date desc"
 
     # ======================================================
-    # 1. SYSTEM & STATUS
+    # 1) SYSTEM & STATUS  (support BOTH: state + status)
     # ======================================================
     name = fields.Char(
         string="Ref",
@@ -31,7 +30,8 @@ class OCRDocument(models.Model):
         default=lambda self: _("New"),
     )
 
-    state = fields.Selection(
+    # Friend views use: status
+    status = fields.Selection(
         [
             ("draft", "Draft"),
             ("processing", "Processing"),
@@ -44,70 +44,93 @@ class OCRDocument(models.Model):
         tracking=True,
     )
 
+    # Backward compat: your old code used state
+    state = fields.Selection(related="status", string="State", readonly=True)
+
     progress = fields.Float(string="Progress", default=0.0, readonly=True)
 
     # ======================================================
-    # 2. FILE HANDLING
+    # 2) FILE HANDLING
     # ======================================================
     file_filename = fields.Char(string="File Name")
     file = fields.Binary(string="File", attachment=True, required=True)
     file_sha256 = fields.Char(string="File SHA256", readonly=True, copy=False)
-
+    
     # ======================================================
-    # 3. HEADER METADATA
+    # 3) DOCUMENT TYPE & HEADER
     # ======================================================
-    doc_type = fields.Selection(
+    # Friend views use: document_type
+    document_type = fields.Selection(
         [("invoice", "Invoice"), ("receipt", "Receipt")],
         string="Type",
         default="invoice",
+        tracking=True,
     )
 
-    document_number = fields.Char(string="Doc No")
-    document_date = fields.Date(string="Doc Date")
+    invoice_id = fields.Char(string="Invoice / Receipt ID", tracking=True)
+    invoice_date = fields.Date(string="Invoice / Receipt Date", tracking=True)
+    due_date = fields.Date(string="Due Date")
+    payment_terms = fields.Char(string="Payment Terms")
+
+    reference_number = fields.Char(string="Reference No")
+
     confidence_score = fields.Float(string="Confidence", default=0.0)
 
     # ======================================================
-    # 4. PARTIES
+    # 4) PARTIES (Friend views use vendor_*/customer_*)
     # ======================================================
-    seller_name = fields.Char(string="Seller Name", tracking=True)
-    seller_tax_id = fields.Char(string="Seller Tax ID")
-    seller_address = fields.Text(string="Seller Address")
-    seller_phone = fields.Char(string="Seller Phone")
-    seller_website = fields.Char(string="Seller Website")
+    vendor_name = fields.Char(string="Vendor Name", tracking=True)
+    vendor_branch_name = fields.Char(string="Branch / Head Office", tracking=True)
+    vendor_tax_id = fields.Char(string="Vendor Tax ID")
+    vendor_address = fields.Text(string="Vendor Address")
+    vendor_phone = fields.Char(string="Vendor Phone")
+    vendor_website = fields.Char(string="Vendor Website")
 
-    customer_name = fields.Char(string="Customer Name")
+    customer_name = fields.Char(string="Customer Name", tracking=True)
     customer_tax_id = fields.Char(string="Customer Tax ID")
     customer_address = fields.Text(string="Customer Address")
     customer_phone = fields.Char(string="Customer Phone")
 
-    # ======================================================
-    # 5. DOCUMENT INFO
-    # ======================================================
-    due_date = fields.Date(string="Due Date")
-    payment_terms = fields.Char(string="Payment Terms")
-    reference_number = fields.Char(string="Reference No")
-    payment_reference = fields.Char(string="Payment Reference")
-    notes = fields.Text(string="Notes")
+    # ------------------------------------------------------
+    # Backward compatibility fields (old naming)
+    # ------------------------------------------------------
+    doc_type = fields.Selection(related="document_type", readonly=True)
+    document_number = fields.Char(related="invoice_id", readonly=True)
+    document_date = fields.Date(related="invoice_date", readonly=True)
 
-    currency = fields.Many2one(
+    seller_name = fields.Char(related="vendor_name", readonly=True)
+    seller_tax_id = fields.Char(related="vendor_tax_id", readonly=True)
+    seller_address = fields.Text(related="vendor_address", readonly=True)
+    seller_phone = fields.Char(related="vendor_phone", readonly=True)
+    seller_website = fields.Char(related="vendor_website", readonly=True)
+
+    # ======================================================
+    # 5) TOTALS (Friend views use monetary fields)
+    # ======================================================
+    currency_id = fields.Many2one(
         "res.currency",
         string="Currency",
         default=lambda self: self.env.company.currency_id,
     )
 
-    # ======================================================
-    # 6. TOTALS
-    # ======================================================
-    subtotal_excl_tax = fields.Float(string="Subtotal (Excl. Tax)")
-    total_discount = fields.Float(string="Total Discount")
-    vat_rate = fields.Float(string="VAT Rate (%)")
-    vat_amount = fields.Float(string="VAT Amount")
-    total_incl_tax = fields.Float(string="Total (Incl. Tax)")
-    rounding_adjustment = fields.Float(string="Rounding Adjustment")
-    amount_in_words = fields.Char(string="Amount in Words")
+    # used by dashboard.xml monetary widget sometimes
+    currency_code = fields.Char(string="Currency Code")
+
+    subtotal_amount = fields.Monetary(string="Subtotal", currency_field="currency_id")
+    discount_amount = fields.Monetary(string="Discount", currency_field="currency_id")
+    vat_amount = fields.Monetary(string="VAT Amount", currency_field="currency_id")
+    total_amount = fields.Monetary(string="Total", currency_field="currency_id")
+
+    # If Azure gives VAT base, keep it (nice for logic)
+    vat_base_amount = fields.Monetary(string="VAT Base", currency_field="currency_id")
+
+    # Backward compat totals
+    subtotal_excl_tax = fields.Monetary(related="subtotal_amount", currency_field="currency_id", readonly=True)
+    total_discount = fields.Monetary(related="discount_amount", currency_field="currency_id", readonly=True)
+    total_incl_tax = fields.Monetary(related="total_amount", currency_field="currency_id", readonly=True)
 
     # ======================================================
-    # 7. LOGS & META
+    # 6) LOGS & OCR META (Friend view NEEDS THESE)
     # ======================================================
     ocr_provider = fields.Char(
         string="OCR Provider",
@@ -115,6 +138,7 @@ class OCRDocument(models.Model):
         readonly=True,
     )
     ocr_run_at = fields.Datetime(string="OCR Run Time", readonly=True)
+
     upload_date = fields.Datetime(
         string="Upload Date",
         default=fields.Datetime.now,
@@ -130,18 +154,27 @@ class OCRDocument(models.Model):
     extraction_log = fields.Text(string="Extraction Log")
     extracted_text = fields.Text(string="Raw OCR Text")
     ocr_error_message = fields.Text(string="Error Message")
-
     # ======================================================
-    # 8. RELATIONS
-    # ======================================================
-    line_ids = fields.One2many(
-        "ocr.document.line",
-        "document_id",
-        string="Line Items",
+# DEBUG / AUDIT LOGS
+# ======================================================
+    azure_raw_response = fields.Text(
+        string="Azure Raw Response",
+        readonly=True,
     )
 
+    post_processed_response = fields.Text(
+        string="Post Processed Data",
+        readonly=True,
+    )
+
+
     # ======================================================
-    # 9. ACCOUNTING LINK
+    # 7) RELATIONS
+    # ======================================================
+    line_ids = fields.One2many("ocr.document.line", "document_id", string="Line Items")
+
+    # ======================================================
+    # 8) ACCOUNTING LINK
     # ======================================================
     vendor_bill_id = fields.Many2one(
         "account.move",
@@ -154,21 +187,16 @@ class OCRDocument(models.Model):
     # HELPERS
     # ======================================================
     def _normalize_phone(self, phone):
-        """
-        Normalize phone numbers to reduce duplicates and improve partner matching.
-        Keeps + sign if present; removes spaces, hyphens, parentheses.
-        """
         if not phone:
             return phone
         phone = str(phone).strip()
-        # Remove common separators
         for ch in [" ", "-", "(", ")", ".", "\t", "\n", "\r"]:
             phone = phone.replace(ch, "")
         return phone
 
     def _safe_float(self, v):
         try:
-            if v is None:
+            if v is None or v == "":
                 return None
             return float(v)
         except Exception:
@@ -181,9 +209,7 @@ class OCRDocument(models.Model):
     def create(self, vals_list):
         for vals in vals_list:
             if vals.get("name", _("New")) == _("New"):
-                vals["name"] = (
-                    self.env["ir.sequence"].next_by_code("ocr.document") or _("New")
-                )
+                vals["name"] = self.env["ir.sequence"].next_by_code("ocr.document") or _("New")
             if vals.get("file"):
                 try:
                     raw = base64.b64decode(vals["file"])
@@ -193,7 +219,7 @@ class OCRDocument(models.Model):
         return super().create(vals_list)
 
     def write(self, vals):
-        if "file" in vals:
+        if "file" in vals and vals.get("file"):
             try:
                 raw = base64.b64decode(vals["file"])
                 vals["file_sha256"] = hashlib.sha256(raw).hexdigest()
@@ -202,24 +228,26 @@ class OCRDocument(models.Model):
         return super().write(vals)
 
     # ======================================================
-    # ACTIONS
+    # VIEW BUTTON ACTIONS (Friend form.xml needs these)
     # ======================================================
     def action_retry(self):
-        self.write(
-            {
-                "state": "draft",
-                "ocr_error_message": False,
+        for rec in self:
+            rec.write({
+                "status": "draft",
                 "progress": 0.0,
+                "ocr_error_message": False,
                 "extraction_log": False,
                 "extracted_text": False,
-            }
-        )
+            })
 
     def action_mark_reviewed(self):
-        self.write({"state": "reviewed"})
+        for rec in self:
+            rec.write({"status": "reviewed"})
 
     def action_open_vendor_bill(self):
         self.ensure_one()
+        if not self.vendor_bill_id:
+            raise UserError(_("No Vendor Bill linked."))
         return {
             "type": "ir.actions.act_window",
             "res_model": "account.move",
@@ -228,47 +256,44 @@ class OCRDocument(models.Model):
         }
 
     # ======================================================
-    # VENDOR BILL CREATION
+    # VENDOR BILL CREATION (keep your smart matching)
     # ======================================================
     def _find_or_create_vendor_partner(self):
         self.ensure_one()
 
-        if not self.seller_name:
-            raise UserError(_("Seller information is missing."))
+        if not self.vendor_name:
+            raise UserError(_("Vendor information is missing."))
 
-        seller_vat = (self.seller_tax_id or "").strip() or False
-        seller_phone = self._normalize_phone(self.seller_phone)
+        vat = (self.vendor_tax_id or "").strip() or False
+        phone = self._normalize_phone(self.vendor_phone)
 
-        # Prefer VAT match (best unique identifier), fallback to name
         domain = [("supplier_rank", ">", 0)]
-        if seller_vat:
-            domain = [("vat", "=", seller_vat)] + domain
+        if vat:
+            domain = [("vat", "=", vat)] + domain
         else:
-            domain = [("name", "=", self.seller_name)] + domain
+            domain = [("name", "=", self.vendor_name)] + domain
 
         partner = self.env["res.partner"].search(domain, limit=1)
 
         if not partner:
-            partner = self.env["res.partner"].create(
-                {
-                    "name": self.seller_name,
-                    "vat": seller_vat,
-                    "phone": seller_phone,
-                    "website": self.seller_website,
-                    "supplier_rank": 1,
-                }
-            )
+            partner = self.env["res.partner"].create({
+                "name": self.vendor_name,
+                "vat": vat,
+                "phone": phone,
+                "website": self.vendor_website,
+                "supplier_rank": 1,
+            })
         else:
-            # Light enrichment (don’t overwrite good data)
-            vals = {}
-            if seller_vat and not partner.vat:
-                vals["vat"] = seller_vat
-            if seller_phone and not partner.phone:
-                vals["phone"] = seller_phone
-            if self.seller_website and not partner.website:
-                vals["website"] = self.seller_website
-            if vals:
-                partner.write(vals)
+            # enrich (no overwrite)
+            upd = {}
+            if vat and not partner.vat:
+                upd["vat"] = vat
+            if phone and not partner.phone:
+                upd["phone"] = phone
+            if self.vendor_website and not partner.website:
+                upd["website"] = self.vendor_website
+            if upd:
+                partner.write(upd)
 
         return partner
 
@@ -282,30 +307,23 @@ class OCRDocument(models.Model):
 
         invoice_lines = []
         for line in self.line_ids:
-            invoice_lines.append(
-                (
-                    0,
-                    0,
-                    {
-                        "name": line.description,
-                        "quantity": line.quantity,
-                        "price_unit": line.unit_price,
-                    },
-                )
-            )
+            invoice_lines.append((0, 0, {
+                "name": line.description or "",
+                "quantity": line.quantity or 1.0,
+                "price_unit": line.unit_price or 0.0,
+            }))
 
         if not invoice_lines:
             raise UserError(_("No line items found."))
 
-        bill_vals = {
+        bill = self.env["account.move"].create({
             "move_type": "in_invoice",
             "partner_id": partner.id,
-            "invoice_date": self.document_date,
+            "invoice_date": self.invoice_date,
             "invoice_origin": self.name,
             "invoice_line_ids": invoice_lines,
-        }
+        })
 
-        bill = self.env["account.move"].create(bill_vals)
         self.vendor_bill_id = bill.id
 
         return {
@@ -316,19 +334,14 @@ class OCRDocument(models.Model):
         }
 
     # ======================================================
-    # OCR LOGIC
+    # OCR LOGIC (keeps your JSON/raw logging + safe totals)
     # ======================================================
     def _detect_currency(self, code_from_azure):
         if code_from_azure:
-            cur = self.env["res.currency"].search(
-                [("name", "=", code_from_azure)], limit=1
-            )
+            cur = self.env["res.currency"].search([("name", "=", code_from_azure)], limit=1)
             if cur:
-                return cur.id
-        thb = self.env["res.currency"].with_context(active_test=False).search(
-            [("name", "=", "THB")], limit=1
-        )
-        return thb.id if thb else self.env.company.currency_id.id
+                return cur
+        return self.env.company.currency_id
 
     def action_run_ocr(self):
         self.ensure_one()
@@ -338,87 +351,102 @@ class OCRDocument(models.Model):
         if not endpoint or not key:
             raise UserError(_("Azure Settings Missing"))
 
-        self.write({"state": "processing", "progress": 10.0})
+        self.write({"status": "processing", "progress": 10.0})
         self.env.cr.commit()
 
         try:
             service = AzureInvoiceService(endpoint, key)
-            data = service.analyze(base64.b64decode(self.file))
+            raw_data = service.analyze(base64.b64decode(self.file))
+
+            # Store EXACT Azure response before any correction
+            self.azure_raw_response = json.dumps(
+                raw_data, indent=4, ensure_ascii=False, default=str
+            )
+
+            # (later we will add corrections here)
+            data = dict(raw_data)
+
+            # Store what we are actually going to use
+            self.post_processed_response = json.dumps(
+                data, indent=4, ensure_ascii=False, default=str
+            )
             if not data:
                 raise UserError(_("No data returned from Azure."))
 
-            currency_id = self._detect_currency(data.get("currency_code"))
+            currency = self._detect_currency(data.get("currency_code"))
 
-            final_subtotal = data.get("vat_base_amount") or data.get("subtotal_amount")
-            subtotal_f = self._safe_float(final_subtotal) or 0.0
-            vat_f = self._safe_float(data.get("vat_amount")) or 0.0
+            # prefer vat_base_amount if exists
+            vat_base = self._safe_float(data.get("vat_base_amount"))
+            subtotal = self._safe_float(data.get("subtotal_amount"))
+            final_subtotal = vat_base if vat_base is not None else (subtotal if subtotal is not None else 0.0)
 
-            # VAT rate (%)
-            vat_rate = 0.0
-            if subtotal_f > 0 and vat_f > 0:
-                vat_rate = round((vat_f / subtotal_f) * 100.0, 2)
+            vat_val = self._safe_float(data.get("vat_amount"))
+            vat_val = vat_val if vat_val is not None else 0.0
 
-            seller_phone = self._normalize_phone(data.get("vendor_phone"))
-            customer_phone = self._normalize_phone(data.get("customer_phone"))
+            # Phones
+            v_phone = self._normalize_phone(data.get("vendor_phone"))
+            c_phone = self._normalize_phone(data.get("customer_phone"))
 
-            self.write(
-                {
-                    "state": "done",
-                    "progress": 100.0,
-                    "ocr_run_at": fields.Datetime.now(),
-                    "extracted_text": json.dumps(
-                        data, indent=4, ensure_ascii=False, default=str
-                    ),
-                    "seller_name": data.get("vendor_name"),
-                    "seller_address": data.get("vendor_address"),
-                    "seller_tax_id": data.get("vendor_tax_id"),
-                    "seller_phone": seller_phone,
-                    "seller_website": data.get("vendor_website"),
-                    "customer_name": data.get("customer_name"),
-                    "customer_address": data.get("customer_address"),
-                    "customer_tax_id": data.get("customer_tax_id"),
-                    "customer_phone": customer_phone,
-                    "document_number": data.get("invoice_id"),
-                    "document_date": data.get("invoice_date"),
-                    "due_date": data.get("due_date"),
-                    "payment_terms": data.get("payment_terms"),
-                    "reference_number": data.get("reference_number"),
+            self.write({
+                "status": "done",
+                "progress": 100.0,
+                "ocr_run_at": fields.Datetime.now(),
 
-                    # IMPORTANT: Many2one should use currency_id in write
-                    "currency": currency_id,
+                # raw OCR json
+                "extracted_text": json.dumps(data, indent=4, ensure_ascii=False, default=str),
 
-                    "subtotal_excl_tax": subtotal_f,
-                    "total_discount": self._safe_float(data.get("discount_amount")) or 0.0,
-                    "vat_amount": vat_f,
-                    "vat_rate": vat_rate,
-                    "total_incl_tax": self._safe_float(data.get("total_amount")) or 0.0,
-                    "confidence_score": data.get("confidence_score", 0.99),
-                }
-            )
+                # header
+                "document_type": data.get("document_type") or self.document_type,
+                "invoice_id": data.get("invoice_id"),
+                "invoice_date": data.get("invoice_date"),
+                "due_date": data.get("due_date"),
+                "payment_terms": data.get("payment_terms"),
+                "reference_number": data.get("reference_number"),
 
-            # Clear + re-add lines (enterprise-safe)
+                # parties
+                "vendor_name": data.get("vendor_name"),
+                "vendor_branch_name": data.get("vendor_branch_name"),
+                "vendor_tax_id": data.get("vendor_tax_id"),
+                "vendor_address": data.get("vendor_address"),
+                "vendor_phone": v_phone,
+                "vendor_website": data.get("vendor_website"),
+
+                "customer_name": data.get("customer_name"),
+                "customer_tax_id": data.get("customer_tax_id"),
+                "customer_address": data.get("customer_address"),
+                "customer_phone": c_phone,
+
+                # totals
+                "currency_id": currency.id,
+                "currency_code": data.get("currency_code") or currency.name,
+                "vat_base_amount": final_subtotal,
+                "subtotal_amount": final_subtotal,
+                "discount_amount": (self._safe_float(data.get("discount_amount")) or 0.0),
+                "vat_amount": vat_val,
+                "total_amount": (self._safe_float(data.get("total_amount")) or 0.0),
+
+                # confidence
+                "confidence_score": (self._safe_float(data.get("confidence_score")) or 0.0),
+            })
+
+            # Replace lines safely
             lines_cmds = [(5, 0, 0)]
-            for item in data.get("items", []):
-                lines_cmds.append(
-                    (
-                        0,
-                        0,
-                        {
-                            "description": item.get("description"),
-                            "quantity": item.get("quantity", 1.0),
-                            "unit_price": item.get("unit_price", 0.0),
-                        },
-                    )
-                )
-
+            for item in (data.get("items") or []):
+                lines_cmds.append((0, 0, {
+                    "product_code": item.get("product_code"),
+                    "description": item.get("description"),
+                    "quantity": item.get("quantity", 1.0),
+                    "unit_price": item.get("unit_price", 0.0),
+                    "discount_amount": item.get("discount_amount", 0.0),
+                    "tax_rate": item.get("tax_rate", 0.0),
+                    "total_amount": item.get("total_amount", 0.0),
+                }))
             self.write({"line_ids": lines_cmds})
 
         except Exception as e:
             _logger.exception("OCR Error")
-            self.write(
-                {
-                    "state": "failed",
-                    "progress": 0.0,
-                    "ocr_error_message": str(e),
-                }
-            )
+            self.write({
+                "status": "failed",
+                "progress": 0.0,
+                "ocr_error_message": str(e),
+            })
