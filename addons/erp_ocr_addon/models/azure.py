@@ -10,12 +10,8 @@ _logger = logging.getLogger(__name__)
 
 class AzureInvoiceService:
     """
-    Wrapper for Azure Document Intelligence (prebuilt-invoice)
-
-    Design principles:
-    - Azure-first: prefer structured fields returned by Azure.
-    - Safe fallbacks: ONLY derive missing fields from raw_text with strict rules.
-    - Thai-friendly: supports common Thai receipt/invoice patterns (phone, branch code, website).
+    Structured Azure-first extraction layer.
+    Keeps Azure intelligence intact while allowing safe fallbacks.
     """
 
     def __init__(self, endpoint: str, key: str):
@@ -30,61 +26,29 @@ class AzureInvoiceService:
     def _normalize_phone(self, s: str) -> str:
         if not s:
             return ""
-        s = s.strip()
-        s = re.sub(r"[ \t\r\n\-\(\)\.]", "", s)
-        return s
+        return re.sub(r"[ \t\r\n\-\(\)\.]", "", s.strip())
 
     def _normalize_website(self, s: str) -> str:
         if not s:
             return ""
-        s = s.strip()
-        # remove trailing punctuation that OCR often includes
-        s = s.rstrip(".,;:)")
-        return s
+        return s.strip().rstrip(".,;:)")
 
     # ======================================================
-    # SAFE FALLBACK EXTRACTORS (raw_text)
+    # SAFE FALLBACK EXTRACTORS
     # ======================================================
-    def _extract_phone_from_text(self, text: str) -> str | None:
-        """
-        Extract phone numbers ONLY near phone labels.
-        Prevents invoice numbers / dates from being mistaken as phones.
-        """
+    def _extract_phone_from_text(self, text: str):
         if not text:
             return None
 
-        # Label-based extraction (BEST & SAFEST)
-        label_patterns = [
-            r"(?:เบอร์โทร|เบอรโทร|โทรศัพท์|โทร|Tel\.?|Telephone|Phone)"
-            r"\s*[:\|]?\s*([+0-9][0-9 \-\(\)\.]{7,})"
-        ]
+        pat = r"(?:เบอร์โทร|โทรศัพท์|Tel\.?|Phone)\s*[:\|]?\s*([+0-9][0-9 \-\(\)\.]{7,})"
+        m = re.search(pat, text, flags=re.IGNORECASE)
+        if m:
+            return self._normalize_phone(m.group(1))
 
-        for pat in label_patterns:
-            m = re.search(pat, text, flags=re.IGNORECASE)
-            if m:
-                cand = self._normalize_phone(m.group(1))
-
-                # Thai phone rules
-                if cand.startswith("+66") and 9 <= len(cand) <= 11:
-                    return cand
-                if cand.startswith("0") and 9 <= len(cand) <= 10:
-                    return cand
-
-        # Secondary scan (still strict)
-        # Accept ONLY Thai-looking numbers, not generic digits
         loose = re.findall(r"(\+66[0-9]{8,9}|0[0-9]{8,9})", text)
-        for cand in loose:
-            cand = self._normalize_phone(cand)
-            if cand.startswith("+66") or cand.startswith("0"):
-                return cand
+        return loose[0] if loose else None
 
-        return None
-
-    def _extract_vendor_website_from_text(self, text: str) -> str | None:
-        """
-        Website is not guaranteed to be returned by Azure.
-        Fallback: extract ONLY when preceded by Website/เว็บไซต์ label.
-        """
+    def _extract_vendor_website_from_text(self, text: str):
         if not text:
             return None
         m = re.search(
@@ -92,35 +56,45 @@ class AzureInvoiceService:
             text,
             flags=re.IGNORECASE,
         )
-        if not m:
-            return None
-        return self._normalize_website(m.group(2))
+        return self._normalize_website(m.group(2)) if m else None
 
-    def _extract_branch_from_text(self, text: str) -> str | None:
-        """
-        Azure prebuilt-invoice does NOT provide branch code as a first-class field.
-        Thai receipts often contain 'รหัสสาขา 00014' or similar.
-        We return a compact, UI-friendly string like 'Branch 00014'.
-        """
+    def _extract_branch_from_text(self, text: str):
         if not text:
             return None
-
-        # Thai: รหัสสาขา 00014
         m = re.search(r"(รหัสสาขา)\s*[:\-]?\s*(\d{4,6})", text)
         if m:
             return f"Branch {m.group(2)}"
-
-        # English: Branch 00014
         m = re.search(r"(?:Branch)\s*[:\-]?\s*(\d{4,6})", text, flags=re.IGNORECASE)
         if m:
             return f"Branch {m.group(1)}"
-
         return None
+
+    # ======================================================
+    # ADDRESS STRUCTURED HANDLER
+    # ======================================================
+    def _get_structured_address(self, field):
+        if not field or not field.value_address:
+            return None
+
+        addr = field.value_address
+        return {
+            "house_number": getattr(addr, "house_number", None),
+            "road": getattr(addr, "road", None),
+            "city": getattr(addr, "city", None),
+            "city_district": getattr(addr, "city_district", None),
+            "postal_code": getattr(addr, "postal_code", None),
+            "country_region": getattr(addr, "country_region", None),
+            "street_address": getattr(addr, "street_address", None),
+            "unit": getattr(addr, "unit", None),
+            "house": getattr(addr, "house", None),
+            "raw": field.content,
+        }
 
     # ======================================================
     # MAIN ANALYSIS
     # ======================================================
     def analyze(self, file_bytes: bytes) -> dict:
+
         poller = self.client.begin_analyze_document(
             "prebuilt-invoice",
             AnalyzeDocumentRequest(bytes_source=file_bytes),
@@ -135,13 +109,10 @@ class AzureInvoiceService:
         doc = result.documents[0]
         fields = doc.fields or {}
 
-        # ==================================================
-        # HELPER FUNCTIONS
-        # ==================================================
         def fget(name):
             return fields.get(name)
 
-        def get_str(name):
+        def get_string(name):
             f = fget(name)
             return f.value_string if f else None
 
@@ -156,102 +127,82 @@ class AzureInvoiceService:
             cur = f.value_currency
             return (cur.amount, getattr(cur, "currency_code", None))
 
-        def get_first_str(candidates):
-            for key in candidates:
-                v = get_str(key)
-                if v:
-                    return v
-            return None
-
-        def format_address(field_name):
-            f = fget(field_name)
-            if not f:
-                return None
-
-            if f.value_address:
-                addr = f.value_address
-                parts = []
-                if getattr(addr, "house_number", None):
-                    parts.append(f"เลขที่ {addr.house_number}")
-                if getattr(addr, "road", None):
-                    parts.append(addr.road)
-                if getattr(addr, "city_district", None):
-                    parts.append(f"เขต{addr.city_district}")
-                if getattr(addr, "city", None):
-                    parts.append(addr.city)
-                if getattr(addr, "postal_code", None):
-                    parts.append(addr.postal_code)
-                if getattr(addr, "country_region", None):
-                    parts.append(addr.country_region)
-
-                joined = " ".join(p for p in parts if p).strip()
-                if joined:
-                    return joined
-
-            return f.content if f.content else None
-
         # ==================================================
-        # EXTRACTION (Azure-first, safe fallbacks)
+        # PARTY FIELDS
         # ==================================================
 
-        # --- Parties ---
-        vendor_name = get_str("VendorName")
-        customer_name = get_str("CustomerName")
+        vendor_name = (
+            get_string("VendorAddressRecipient")
+            or get_string("VendorName")
+        )
 
-        vendor_tax_id = get_first_str(["VendorTaxId", "TaxId", "VendorVATNumber"])
-        customer_tax_id = get_first_str(["CustomerTaxId", "CustomerVATNumber"])
+        customer_name = (
+            get_string("CustomerAddressRecipient")
+            or get_string("CustomerName")
+        )
 
-        # --- Phones ---
+        vendor_tax_id = get_string("VendorTaxId")
+        customer_tax_id = get_string("CustomerTaxId")
+
+        # Phones
         vendor_phone = (
-            get_first_str(["VendorPhoneNumber", "VendorPhone"])
+            get_string("VendorPhoneNumber")
             or self._extract_phone_from_text(raw_text)
         )
-        customer_phone = get_first_str(["CustomerPhoneNumber", "CustomerPhone"])
 
-        # --- Website (Azure first, then strict label-based regex) ---
-        vendor_website = get_first_str(["VendorWebsite", "Website"])
-        if not vendor_website:
-            vendor_website = self._extract_vendor_website_from_text(raw_text)
+        customer_phone = get_string("CustomerPhoneNumber")
+
+        # Website
+        vendor_website = (
+            get_string("VendorWebsite")
+            or self._extract_vendor_website_from_text(raw_text)
+        )
         if vendor_website:
             vendor_website = self._normalize_website(vendor_website)
 
-        # --- Branch (derived; not an Azure native field) ---
+        # Branch
         vendor_branch_name = self._extract_branch_from_text(raw_text)
 
-        # --- Addresses ---
-        vendor_address = format_address("VendorAddress")
-        customer_address = format_address("CustomerAddress")
+        # Structured addresses
+        vendor_address_struct = self._get_structured_address(fget("VendorAddress"))
+        customer_address_struct = self._get_structured_address(fget("CustomerAddress"))
 
-        # --- Document Info ---
-        # IMPORTANT: invoice_id should NOT fallback to ReferenceNumber (that causes confusion)
-        invoice_id = get_first_str(["InvoiceId", "InvoiceNumber", "ReceiptNumber"])
-        reference_number = get_first_str(["ReferenceNumber", "PurchaseOrder", "Reference"])
+        # ==================================================
+        # DOCUMENT INFO
+        # ==================================================
+        invoice_id = get_string("InvoiceId")
+        reference_number = (
+            get_string("PurchaseOrder")
+            or get_string("ReferenceNumber")
+        )
 
-        invoice_date = get_date("InvoiceDate") or get_date("Date")
+        invoice_date = get_date("InvoiceDate")
         due_date = get_date("DueDate")
-        payment_terms = get_str("PaymentTerm") or get_str("PaymentTerms")
+        payment_terms = get_string("PaymentTerm")
 
-        # --- Financials & Currency ---
+        # ==================================================
+        # FINANCIALS
+        # ==================================================
         subtotal, c1 = get_currency("SubTotal")
         discount, c2 = get_currency("TotalDiscount")
         vat, c3 = get_currency("TotalTax")
         total, c4 = get_currency("InvoiceTotal")
+
         currency_code = c4 or c3 or c2 or c1
 
-        # --- VAT Base Calculation ---
         vat_base_amount = None
-        net_amount, _net_ccy = get_currency("TotalNet")
-        if net_amount is not None:
-            vat_base_amount = net_amount
-        elif total is not None and vat is not None:
+        if total is not None and vat is not None:
             try:
                 vat_base_amount = round(float(total) - float(vat), 2)
             except Exception:
-                vat_base_amount = None
+                pass
 
-        # --- Line Items ---
+        # ==================================================
+        # ITEMS
+        # ==================================================
         items = []
         items_field = fget("Items")
+
         if items_field and items_field.value_array:
             for item in items_field.value_array:
                 obj = item.value_object
@@ -271,16 +222,12 @@ class AzureInvoiceService:
                         else 0.0
                     )
 
-                amount = l_money("Amount")
-                if not amount:
-                    amount = l_money("LineTotal") or l_money("TotalPrice")
-
                 items.append({
                     "description": l_str("Description"),
                     "product_code": l_str("ProductCode"),
                     "quantity": l_num("Quantity"),
                     "unit_price": l_money("UnitPrice"),
-                    "amount": amount,
+                    "amount": l_money("Amount"),
                 })
 
         confidence = doc.confidence if hasattr(doc, "confidence") else 0.9
@@ -290,7 +237,6 @@ class AzureInvoiceService:
             "confidence_score": confidence,
             "currency_code": currency_code,
 
-            # Azure-aligned canonical fields
             "invoice_id": invoice_id,
             "reference_number": reference_number,
             "invoice_date": invoice_date,
@@ -300,14 +246,14 @@ class AzureInvoiceService:
             "vendor_name": vendor_name,
             "vendor_branch_name": vendor_branch_name,
             "vendor_tax_id": vendor_tax_id,
-            "vendor_address": vendor_address,
             "vendor_phone": vendor_phone,
             "vendor_website": vendor_website,
+            "vendor_address_struct": vendor_address_struct,
 
             "customer_name": customer_name,
             "customer_tax_id": customer_tax_id,
-            "customer_address": customer_address,
             "customer_phone": customer_phone,
+            "customer_address_struct": customer_address_struct,
 
             "subtotal_amount": subtotal,
             "discount_amount": discount,

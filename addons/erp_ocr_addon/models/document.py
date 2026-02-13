@@ -20,7 +20,7 @@ class OCRDocument(models.Model):
     _order = "create_date desc"
 
     # ======================================================
-    # 1) SYSTEM & STATUS  (support BOTH: state + status)
+    # 1) SYSTEM & STATUS (support BOTH: state + status)
     # ======================================================
     name = fields.Char(
         string="Ref",
@@ -30,7 +30,6 @@ class OCRDocument(models.Model):
         default=lambda self: _("New"),
     )
 
-    # Friend views use: status
     status = fields.Selection(
         [
             ("draft", "Draft"),
@@ -44,7 +43,6 @@ class OCRDocument(models.Model):
         tracking=True,
     )
 
-    # Backward compat: your old code used state
     state = fields.Selection(related="status", string="State", readonly=True)
 
     progress = fields.Float(string="Progress", default=0.0, readonly=True)
@@ -55,11 +53,10 @@ class OCRDocument(models.Model):
     file_filename = fields.Char(string="File Name")
     file = fields.Binary(string="File", attachment=True, required=True)
     file_sha256 = fields.Char(string="File SHA256", readonly=True, copy=False)
-    
+
     # ======================================================
     # 3) DOCUMENT TYPE & HEADER
     # ======================================================
-    # Friend views use: document_type
     document_type = fields.Selection(
         [("invoice", "Invoice"), ("receipt", "Receipt")],
         string="Type",
@@ -73,11 +70,10 @@ class OCRDocument(models.Model):
     payment_terms = fields.Char(string="Payment Terms")
 
     reference_number = fields.Char(string="Reference No")
-
     confidence_score = fields.Float(string="Confidence", default=0.0)
 
     # ======================================================
-    # 4) PARTIES (Friend views use vendor_*/customer_*)
+    # 4) PARTIES
     # ======================================================
     vendor_name = fields.Char(string="Vendor Name", tracking=True)
     vendor_branch_name = fields.Char(string="Branch / Head Office", tracking=True)
@@ -91,9 +87,7 @@ class OCRDocument(models.Model):
     customer_address = fields.Text(string="Customer Address")
     customer_phone = fields.Char(string="Customer Phone")
 
-    # ------------------------------------------------------
     # Backward compatibility fields (old naming)
-    # ------------------------------------------------------
     doc_type = fields.Selection(related="document_type", readonly=True)
     document_number = fields.Char(related="invoice_id", readonly=True)
     document_date = fields.Date(related="invoice_date", readonly=True)
@@ -105,7 +99,7 @@ class OCRDocument(models.Model):
     seller_website = fields.Char(related="vendor_website", readonly=True)
 
     # ======================================================
-    # 5) TOTALS (Friend views use monetary fields)
+    # 5) TOTALS
     # ======================================================
     currency_id = fields.Many2one(
         "res.currency",
@@ -113,24 +107,26 @@ class OCRDocument(models.Model):
         default=lambda self: self.env.company.currency_id,
     )
 
-    # used by dashboard.xml monetary widget sometimes
     currency_code = fields.Char(string="Currency Code")
 
     subtotal_amount = fields.Monetary(string="Subtotal", currency_field="currency_id")
     discount_amount = fields.Monetary(string="Discount", currency_field="currency_id")
     vat_amount = fields.Monetary(string="VAT Amount", currency_field="currency_id")
     total_amount = fields.Monetary(string="Total", currency_field="currency_id")
-
-    # If Azure gives VAT base, keep it (nice for logic)
     vat_base_amount = fields.Monetary(string="VAT Base", currency_field="currency_id")
 
-    # Backward compat totals
-    subtotal_excl_tax = fields.Monetary(related="subtotal_amount", currency_field="currency_id", readonly=True)
-    total_discount = fields.Monetary(related="discount_amount", currency_field="currency_id", readonly=True)
-    total_incl_tax = fields.Monetary(related="total_amount", currency_field="currency_id", readonly=True)
+    subtotal_excl_tax = fields.Monetary(
+        related="subtotal_amount", currency_field="currency_id", readonly=True
+    )
+    total_discount = fields.Monetary(
+        related="discount_amount", currency_field="currency_id", readonly=True
+    )
+    total_incl_tax = fields.Monetary(
+        related="total_amount", currency_field="currency_id", readonly=True
+    )
 
     # ======================================================
-    # 6) LOGS & OCR META (Friend view NEEDS THESE)
+    # 6) LOGS & OCR META
     # ======================================================
     ocr_provider = fields.Char(
         string="OCR Provider",
@@ -154,19 +150,10 @@ class OCRDocument(models.Model):
     extraction_log = fields.Text(string="Extraction Log")
     extracted_text = fields.Text(string="Raw OCR Text")
     ocr_error_message = fields.Text(string="Error Message")
-    # ======================================================
-# DEBUG / AUDIT LOGS
-# ======================================================
-    azure_raw_response = fields.Text(
-        string="Azure Raw Response",
-        readonly=True,
-    )
 
-    post_processed_response = fields.Text(
-        string="Post Processed Data",
-        readonly=True,
-    )
-
+    # DEBUG / AUDIT LOGS
+    azure_raw_response = fields.Text(string="Azure Raw Response", readonly=True)
+    post_processed_response = fields.Text(string="Post Processed Data", readonly=True)
 
     # ======================================================
     # 7) RELATIONS
@@ -202,6 +189,43 @@ class OCRDocument(models.Model):
         except Exception:
             return None
 
+    def _detect_currency(self, code_from_azure):
+        if code_from_azure:
+            cur = self.env["res.currency"].search([("name", "=", code_from_azure)], limit=1)
+            if cur:
+                return cur
+        return self.env.company.currency_id
+
+    def _format_structured_address(self, addr_struct):
+        """
+        Azure returns value_address with many components.
+        We format into a clean display string for Odoo Text fields.
+        """
+        if not addr_struct or not isinstance(addr_struct, dict):
+            return None
+
+        parts = []
+
+        # Nice order for Thailand docs
+        # (keep it simple + non-destructive)
+        for key in ["house", "unit", "street_address", "house_number", "road", "city_district", "city", "postal_code", "country_region"]:
+            val = addr_struct.get(key)
+            if val:
+                parts.append(str(val).strip())
+
+        # If everything empty, fallback to raw content if provided
+        if not parts:
+            raw = addr_struct.get("raw")
+            return raw.strip() if raw else None
+
+        # de-duplicate neighboring duplicates
+        cleaned = []
+        for p in parts:
+            if not cleaned or cleaned[-1] != p:
+                cleaned.append(p)
+
+        return ", ".join(cleaned)
+
     # ======================================================
     # CREATE / WRITE
     # ======================================================
@@ -228,7 +252,7 @@ class OCRDocument(models.Model):
         return super().write(vals)
 
     # ======================================================
-    # VIEW BUTTON ACTIONS (Friend form.xml needs these)
+    # VIEW BUTTON ACTIONS
     # ======================================================
     def action_retry(self):
         for rec in self:
@@ -238,6 +262,8 @@ class OCRDocument(models.Model):
                 "ocr_error_message": False,
                 "extraction_log": False,
                 "extracted_text": False,
+                "azure_raw_response": False,
+                "post_processed_response": False,
             })
 
     def action_mark_reviewed(self):
@@ -256,7 +282,7 @@ class OCRDocument(models.Model):
         }
 
     # ======================================================
-    # VENDOR BILL CREATION (keep your smart matching)
+    # VENDOR BILL CREATION
     # ======================================================
     def _find_or_create_vendor_partner(self):
         self.ensure_one()
@@ -284,7 +310,6 @@ class OCRDocument(models.Model):
                 "supplier_rank": 1,
             })
         else:
-            # enrich (no overwrite)
             upd = {}
             if vat and not partner.vat:
                 upd["vat"] = vat
@@ -334,15 +359,8 @@ class OCRDocument(models.Model):
         }
 
     # ======================================================
-    # OCR LOGIC (keeps your JSON/raw logging + safe totals)
+    # OCR RUN
     # ======================================================
-    def _detect_currency(self, code_from_azure):
-        if code_from_azure:
-            cur = self.env["res.currency"].search([("name", "=", code_from_azure)], limit=1)
-            if cur:
-                return cur
-        return self.env.company.currency_id
-
     def action_run_ocr(self):
         self.ensure_one()
 
@@ -358,24 +376,20 @@ class OCRDocument(models.Model):
             service = AzureInvoiceService(endpoint, key)
             raw_data = service.analyze(base64.b64decode(self.file))
 
-            # Store EXACT Azure response before any correction
-            self.azure_raw_response = json.dumps(
-                raw_data, indent=4, ensure_ascii=False, default=str
-            )
+            # Store exact Azure output
+            self.azure_raw_response = json.dumps(raw_data, indent=4, ensure_ascii=False, default=str)
 
-            # (later we will add corrections here)
-            data = dict(raw_data)
+            data = dict(raw_data)  # later: apply corrections here
 
-            # Store what we are actually going to use
-            self.post_processed_response = json.dumps(
-                data, indent=4, ensure_ascii=False, default=str
-            )
+            # Store post-processed
+            self.post_processed_response = json.dumps(data, indent=4, ensure_ascii=False, default=str)
+
             if not data:
                 raise UserError(_("No data returned from Azure."))
 
             currency = self._detect_currency(data.get("currency_code"))
 
-            # prefer vat_base_amount if exists
+            # Totals (keep your current logic)
             vat_base = self._safe_float(data.get("vat_base_amount"))
             subtotal = self._safe_float(data.get("subtotal_amount"))
             final_subtotal = vat_base if vat_base is not None else (subtotal if subtotal is not None else 0.0)
@@ -387,16 +401,18 @@ class OCRDocument(models.Model):
             v_phone = self._normalize_phone(data.get("vendor_phone"))
             c_phone = self._normalize_phone(data.get("customer_phone"))
 
+            # Structured addresses -> formatted strings
+            vendor_addr = self._format_structured_address(data.get("vendor_address_struct"))
+            customer_addr = self._format_structured_address(data.get("customer_address_struct"))
+
             self.write({
                 "status": "done",
                 "progress": 100.0,
                 "ocr_run_at": fields.Datetime.now(),
 
-                # raw OCR json
                 "extracted_text": json.dumps(data, indent=4, ensure_ascii=False, default=str),
 
                 # header
-                "document_type": data.get("document_type") or self.document_type,
                 "invoice_id": data.get("invoice_id"),
                 "invoice_date": data.get("invoice_date"),
                 "due_date": data.get("due_date"),
@@ -407,13 +423,13 @@ class OCRDocument(models.Model):
                 "vendor_name": data.get("vendor_name"),
                 "vendor_branch_name": data.get("vendor_branch_name"),
                 "vendor_tax_id": data.get("vendor_tax_id"),
-                "vendor_address": data.get("vendor_address"),
+                "vendor_address": vendor_addr,
                 "vendor_phone": v_phone,
                 "vendor_website": data.get("vendor_website"),
 
                 "customer_name": data.get("customer_name"),
                 "customer_tax_id": data.get("customer_tax_id"),
-                "customer_address": data.get("customer_address"),
+                "customer_address": customer_addr,
                 "customer_phone": c_phone,
 
                 # totals
