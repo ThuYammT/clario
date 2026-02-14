@@ -4,6 +4,7 @@ import base64
 import json
 import logging
 import hashlib
+import re
 
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
@@ -197,34 +198,114 @@ class OCRDocument(models.Model):
         return self.env.company.currency_id
 
     def _format_structured_address(self, addr_struct):
-        """
-        Azure returns value_address with many components.
-        We format into a clean display string for Odoo Text fields.
-        """
         if not addr_struct or not isinstance(addr_struct, dict):
             return None
 
-        parts = []
+        # Prefer RAW if exists (cleanest full address)
+        raw = addr_struct.get("raw")
+        if raw:
+            raw = raw.replace("\n", " ")
+            raw = re.sub(r"\s+", " ", raw).strip()
+            return raw
 
-        # Nice order for Thailand docs
-        # (keep it simple + non-destructive)
-        for key in ["house", "unit", "street_address", "house_number", "road", "city_district", "city", "postal_code", "country_region"]:
+        parts = []
+        seen = set()
+
+        for key in [
+            "house",
+            "unit",
+            "street_address",
+            "house_number",
+            "road",
+            "city_district",
+            "city",
+            "postal_code",
+            "country_region",
+        ]:
             val = addr_struct.get(key)
             if val:
-                parts.append(str(val).strip())
+                clean_val = val.replace("\n", " ")
+                clean_val = re.sub(r"\s+", " ", clean_val).strip()
 
-        # If everything empty, fallback to raw content if provided
-        if not parts:
-            raw = addr_struct.get("raw")
-            return raw.strip() if raw else None
+                # prevent duplication
+                if clean_val not in seen:
+                    seen.add(clean_val)
+                    parts.append(clean_val)
 
-        # de-duplicate neighboring duplicates
-        cleaned = []
-        for p in parts:
-            if not cleaned or cleaned[-1] != p:
-                cleaned.append(p)
+        return ", ".join(parts) if parts else None
 
-        return ", ".join(cleaned)
+    # ======================================================
+    # STRUCTURAL CLEANING (Non-Financial Deterministic Fixes)
+    # ======================================================
+
+    def _clean_vendor_name(self, name):
+        if not name:
+            return name
+
+        name = name.replace("\n", " ").strip()
+
+        # Remove anything after pipe containing branch info
+        name = re.sub(r"\|\s*.*?(รหัสสาขา|Branch).*?$", "", name, flags=re.IGNORECASE)
+
+        # Remove duplicate spaces
+        name = re.sub(r"\s+", " ", name).strip()
+
+        return name
+
+
+
+    def _clean_text_field(self, value):
+        if not value:
+            return value
+        value = value.replace("\n", " ")
+        value = re.sub(r"\s+", " ", value).strip()
+        return value
+    
+    def _fallback_extract_customer_tax_id(self, data):
+        """
+        Deterministic fallback for Thai receipts.
+        Rules:
+        1. Prefer explicit Customer ID label
+        2. Avoid picking vendor tax ID
+        3. Only fallback to generic 13-digit if safe
+        """
+
+        if data.get("customer_tax_id"):
+            return data.get("customer_tax_id")
+
+        raw_text = data.get("raw_text") or ""
+        vendor_tax = data.get("vendor_tax_id")
+
+        # 1️⃣ STRICT match: Customer ID label only
+        match = re.search(
+            r"Customer\s*ID\s*[:\-]?\s*\n?\s*(\d{13})",
+            raw_text,
+            re.IGNORECASE
+        )
+        if match:
+            return match.group(1)
+
+        # 2️⃣ Thai label for customer tax
+        match = re.search(
+            r"ลูกค้า.*?(?:Tax\s*ID|เลขประจำตัวผู้เสียภาษี).*?(\d{13})",
+            raw_text,
+            re.IGNORECASE | re.DOTALL
+        )
+        if match:
+            val = match.group(1)
+            if val != vendor_tax:
+                return val
+
+        # 3️⃣ SAFE fallback: find all 13-digit numbers except vendor tax
+        candidates = re.findall(r"\b\d{13}\b", raw_text)
+        for num in candidates:
+            if num != vendor_tax:
+                return num
+
+        return None
+
+
+
 
     # ======================================================
     # CREATE / WRITE
@@ -368,7 +449,7 @@ class OCRDocument(models.Model):
         key = os.environ.get("AZURE_FORM_KEY")
         if not endpoint or not key:
             raise UserError(_("Azure Settings Missing"))
-
+        
         self.write({"status": "processing", "progress": 10.0})
         self.env.cr.commit()
 
@@ -378,11 +459,33 @@ class OCRDocument(models.Model):
 
             # Store exact Azure output
             self.azure_raw_response = json.dumps(raw_data, indent=4, ensure_ascii=False, default=str)
-
+            # ==========================================
+            # APPLY STRUCTURAL CLEANING
+            # ==========================================
             data = dict(raw_data)  # later: apply corrections here
+            # Clean vendor name
+            data["vendor_name"] = self._clean_vendor_name(data.get("vendor_name"))
 
-            # Store post-processed
-            self.post_processed_response = json.dumps(data, indent=4, ensure_ascii=False, default=str)
+            # Clean customer name
+            data["customer_name"] = self._clean_text_field(data.get("customer_name"))
+
+            # Clean website
+            data["vendor_website"] = self._clean_text_field(data.get("vendor_website"))
+
+            # Clean tax ids
+            data["vendor_tax_id"] = self._clean_text_field(data.get("vendor_tax_id"))
+            data["customer_tax_id"] = self._clean_text_field(data.get("customer_tax_id"))
+
+            # Deterministic fallback for Thai receipts
+            if not data.get("customer_tax_id"):
+                fallback_tax = self._fallback_extract_customer_tax_id(data)
+                if fallback_tax:
+                    data["customer_tax_id"] = fallback_tax
+
+
+            self.post_processed_response = json.dumps(
+            data, indent=4, ensure_ascii=False, default=str)
+
 
             if not data:
                 raise UserError(_("No data returned from Azure."))
@@ -401,9 +504,12 @@ class OCRDocument(models.Model):
             v_phone = self._normalize_phone(data.get("vendor_phone"))
             c_phone = self._normalize_phone(data.get("customer_phone"))
 
+
             # Structured addresses -> formatted strings
             vendor_addr = self._format_structured_address(data.get("vendor_address_struct"))
             customer_addr = self._format_structured_address(data.get("customer_address_struct"))
+            vendor_addr = self._clean_text_field(vendor_addr)
+            customer_addr = self._clean_text_field(customer_addr)
 
             self.write({
                 "status": "done",
