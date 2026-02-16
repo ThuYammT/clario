@@ -52,7 +52,7 @@ class OCRDocumentLine(models.Model):
             disc = float(line.discount_amount or 0.0)
 
             subtotal = (qty * price) - disc
-            if subtotal < 0 and price > 0:
+            if subtotal < 0:
                 subtotal = 0.0
 
             # Prefer explicit tax_amount if set, otherwise compute from rate

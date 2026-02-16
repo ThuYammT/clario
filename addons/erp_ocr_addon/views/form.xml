@@ -121,13 +121,37 @@
                 </page>
 
                 <page string="Totals">
+
                   <group col="2">
-                    <field name="subtotal_amount"/>
+
+                    <separator string="Base Calculations" colspan="2"/>
+
+                    <field name="subtotal_excl_vat_excl_discount"
+                          readonly="1"/>
+
+                    <field name="subtotal_incl_vat_excl_discount"
+                          readonly="1"/>
+
+                    <field name="subtotal_excl_vat_incl_discount"
+                          readonly="1"/>
+
+                    <separator string="Adjustments" colspan="2"/>
+
                     <field name="discount_amount"/>
+
                     <field name="vat_amount"/>
-                    <field name="total_amount"/>
+
+                    <separator string="Final Result" colspan="2"/>
+
+                    <field name="total_payable"
+                          readonly="1"
+                          class="oe_inline"
+                          style="font-weight:600;font-size:16px;"/>
+
                   </group>
+
                 </page>
+
 
               </notebook>
 

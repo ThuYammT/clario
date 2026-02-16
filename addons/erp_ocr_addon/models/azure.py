@@ -12,12 +12,16 @@ class AzureInvoiceService:
     """
     Structured Azure-first extraction layer.
     Keeps Azure intelligence intact while allowing safe fallbacks.
+
+    IMPORTANT:
+    - Do NOT derive vat_base_amount using (total - vat). Azure may return totals in different meanings.
+    - Provide raw Azure numbers + strong computed hints (items sums) for the Odoo layer to decide.
     """
 
     def __init__(self, endpoint: str, key: str):
         self.client = DocumentIntelligenceClient(
             endpoint=endpoint,
-            credential=AzureKeyCredential(key)
+            credential=AzureKeyCredential(key),
         )
 
     # ======================================================
@@ -73,7 +77,7 @@ class AzureInvoiceService:
     # ADDRESS STRUCTURED HANDLER
     # ======================================================
     def _get_structured_address(self, field):
-        if not field or not field.value_address:
+        if not field or not getattr(field, "value_address", None):
             return None
 
         addr = field.value_address
@@ -87,14 +91,13 @@ class AzureInvoiceService:
             "street_address": getattr(addr, "street_address", None),
             "unit": getattr(addr, "unit", None),
             "house": getattr(addr, "house", None),
-            "raw": field.content,
+            "raw": getattr(field, "content", None),
         }
 
     # ======================================================
     # MAIN ANALYSIS
     # ======================================================
     def analyze(self, file_bytes: bytes) -> dict:
-
         poller = self.client.begin_analyze_document(
             "prebuilt-invoice",
             AnalyzeDocumentRequest(bytes_source=file_bytes),
@@ -103,7 +106,7 @@ class AzureInvoiceService:
 
         raw_text = getattr(result, "content", None) or ""
 
-        if not result.documents:
+        if not getattr(result, "documents", None):
             return {"raw_text": raw_text}
 
         doc = result.documents[0]
@@ -122,7 +125,7 @@ class AzureInvoiceService:
 
         def get_currency(name):
             f = fget(name)
-            if not f or not f.value_currency:
+            if not f or not getattr(f, "value_currency", None):
                 return (None, None)
             cur = f.value_currency
             return (cur.amount, getattr(cur, "currency_code", None))
@@ -130,33 +133,18 @@ class AzureInvoiceService:
         # ==================================================
         # PARTY FIELDS
         # ==================================================
-
-        vendor_name = (
-            get_string("VendorAddressRecipient")
-            or get_string("VendorName")
-        )
-
-        customer_name = (
-            get_string("CustomerAddressRecipient")
-            or get_string("CustomerName")
-        )
+        vendor_name = get_string("VendorAddressRecipient") or get_string("VendorName")
+        customer_name = get_string("CustomerAddressRecipient") or get_string("CustomerName")
 
         vendor_tax_id = get_string("VendorTaxId")
-        customer_tax_id = get_string("CustomerTaxId")
+        customer_tax_id = get_string("CustomerTaxId")  # NOTE: many Thai receipts use CustomerId instead
 
         # Phones
-        vendor_phone = (
-            get_string("VendorPhoneNumber")
-            or self._extract_phone_from_text(raw_text)
-        )
-
+        vendor_phone = get_string("VendorPhoneNumber") or self._extract_phone_from_text(raw_text)
         customer_phone = get_string("CustomerPhoneNumber")
 
         # Website
-        vendor_website = (
-            get_string("VendorWebsite")
-            or self._extract_vendor_website_from_text(raw_text)
-        )
+        vendor_website = get_string("VendorWebsite") or self._extract_vendor_website_from_text(raw_text)
         if vendor_website:
             vendor_website = self._normalize_website(vendor_website)
 
@@ -171,17 +159,14 @@ class AzureInvoiceService:
         # DOCUMENT INFO
         # ==================================================
         invoice_id = get_string("InvoiceId")
-        reference_number = (
-            get_string("PurchaseOrder")
-            or get_string("ReferenceNumber")
-        )
+        reference_number = get_string("PurchaseOrder") or get_string("ReferenceNumber")
 
         invoice_date = get_date("InvoiceDate")
         due_date = get_date("DueDate")
         payment_terms = get_string("PaymentTerm")
 
         # ==================================================
-        # FINANCIALS
+        # FINANCIALS (RAW AZURE VALUES ONLY)
         # ==================================================
         subtotal, c1 = get_currency("SubTotal")
         discount, c2 = get_currency("TotalDiscount")
@@ -190,12 +175,9 @@ class AzureInvoiceService:
 
         currency_code = c4 or c3 or c2 or c1
 
+        # IMPORTANT: DO NOT compute vat_base_amount = total - vat here
+        # It's unreliable across receipts/invoices and will break your deterministic logic later.
         vat_base_amount = None
-        if total is not None and vat is not None:
-            try:
-                vat_base_amount = round(float(total) - float(vat), 2)
-            except Exception:
-                pass
 
         # ==================================================
         # ITEMS
@@ -203,9 +185,14 @@ class AzureInvoiceService:
         items = []
         items_field = fget("Items")
 
-        if items_field and items_field.value_array:
+        items_sum_amount = 0.0
+        items_sum_unitprice_qty = 0.0
+        items_source = "none"
+
+        if items_field and getattr(items_field, "value_array", None):
+            items_source = "azure_items"
             for item in items_field.value_array:
-                obj = item.value_object
+                obj = getattr(item, "value_object", None)
                 if not obj:
                     continue
 
@@ -213,24 +200,49 @@ class AzureInvoiceService:
                     return obj.get(k).value_string if obj.get(k) else ""
 
                 def l_num(k):
-                    return obj.get(k).value_number if obj.get(k) else 1.0
+                    return obj.get(k).value_number if obj.get(k) else 0.0
 
                 def l_money(k):
                     return (
                         obj.get(k).value_currency.amount
-                        if obj.get(k) and obj.get(k).value_currency
+                        if obj.get(k) and getattr(obj.get(k), "value_currency", None)
                         else 0.0
                     )
 
+                desc = l_str("Description")
+                code = l_str("ProductCode")
+                qty = l_num("Quantity") or 0.0
+                unit_price = l_money("UnitPrice") or 0.0
+                amt = l_money("Amount") or 0.0
+
                 items.append({
-                    "description": l_str("Description"),
-                    "product_code": l_str("ProductCode"),
-                    "quantity": l_num("Quantity"),
-                    "unit_price": l_money("UnitPrice"),
-                    "amount": l_money("Amount"),
+                    "description": desc,
+                    "product_code": code,
+                    "quantity": qty if qty else 1.0,
+                    "unit_price": unit_price,
+                    "amount": amt,
                 })
 
+                # Sums for deterministic recomputation in Odoo layer
+                try:
+                    items_sum_amount += float(amt or 0.0)
+                except Exception:
+                    pass
+
+                try:
+                    items_sum_unitprice_qty += float(qty or 0.0) * float(unit_price or 0.0)
+                except Exception:
+                    pass
+
+        items_sum_amount = round(items_sum_amount, 2)
+        items_sum_unitprice_qty = round(items_sum_unitprice_qty, 2)
+
+        # Confidence
         confidence = doc.confidence if hasattr(doc, "confidence") else 0.9
+
+        # ALSO: Many Thai receipts store CustomerId (not CustomerTaxId)
+        # We expose it to your Odoo deterministic fallback logic.
+        customer_id = get_string("CustomerId")
 
         return {
             "raw_text": raw_text,
@@ -252,14 +264,22 @@ class AzureInvoiceService:
 
             "customer_name": customer_name,
             "customer_tax_id": customer_tax_id,
+            "customer_id": customer_id,  # extra field for Thai receipts
             "customer_phone": customer_phone,
             "customer_address_struct": customer_address_struct,
 
+            # RAW Azure financials (do not "fix" here)
             "subtotal_amount": subtotal,
             "discount_amount": discount,
             "vat_amount": vat,
             "total_amount": total,
+
+            # keep field for compatibility but do NOT compute here
             "vat_base_amount": vat_base_amount,
 
+            # items + sums for deterministic Odoo recompute
             "items": items,
+            "items_sum_amount": items_sum_amount,
+            "items_sum_unitprice_qty": items_sum_unitprice_qty,
+            "items_source": items_source,
         }

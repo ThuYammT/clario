@@ -125,6 +125,29 @@ class OCRDocument(models.Model):
     total_incl_tax = fields.Monetary(
         related="total_amount", currency_field="currency_id", readonly=True
     )
+    # ======================================================
+    # 5) TOTALS (Clear meanings)
+    # ======================================================
+    subtotal_excl_vat_excl_discount = fields.Monetary(
+        string="Subtotal (Excl VAT, Excl Discount)",
+        currency_field="currency_id",
+    )
+
+    subtotal_incl_vat_excl_discount = fields.Monetary(
+        string="Subtotal (Incl VAT, Excl Discount)",
+        currency_field="currency_id",
+    )
+
+    subtotal_excl_vat_incl_discount = fields.Monetary(
+        string="Subtotal (Excl VAT, Incl Discount)",
+        currency_field="currency_id",
+    )
+
+    total_payable = fields.Monetary(
+        string="Total Payable (Incl VAT, Incl Discount)",
+        currency_field="currency_id",
+    )
+
 
     # ======================================================
     # 6) LOGS & OCR META
@@ -475,6 +498,31 @@ class OCRDocument(models.Model):
             # Clean tax ids
             data["vendor_tax_id"] = self._clean_text_field(data.get("vendor_tax_id"))
             data["customer_tax_id"] = self._clean_text_field(data.get("customer_tax_id"))
+            # ==========================================
+            # DISCOUNT FALLBACK (Flexible Thai Pattern)
+            # ==========================================
+            if not data.get("discount_amount"):
+                raw_text = data.get("raw_text") or ""
+
+                discount_keywords = [
+                    "ส่วนลด",
+                    "ลดราคา",
+                    "หักส่วนลด",
+                    "โปรโมชั่น",
+                    "โปรโมชัน",
+                    "Discount",
+                    "Promo"
+                ]
+
+                pattern = r"(?:%s)[^\n]*\n?\s*[-]?\s*([0-9]+\.[0-9]{2})" % "|".join(discount_keywords)
+
+                m = re.search(pattern, raw_text, re.IGNORECASE)
+
+                if m:
+                    try:
+                        data["discount_amount"] = float(m.group(1))
+                    except Exception:
+                        pass
 
             # Deterministic fallback for Thai receipts
             if not data.get("customer_tax_id"):
@@ -493,12 +541,125 @@ class OCRDocument(models.Model):
             currency = self._detect_currency(data.get("currency_code"))
 
             # Totals (keep your current logic)
-            vat_base = self._safe_float(data.get("vat_base_amount"))
-            subtotal = self._safe_float(data.get("subtotal_amount"))
-            final_subtotal = vat_base if vat_base is not None else (subtotal if subtotal is not None else 0.0)
+            # ======================================================
+            # ======================================================
+            # FINANCIALS (stable deterministic logic)
+            # ======================================================
+            # ======================================================
+            # FINANCIALS — DETERMINISTIC (LINE FIRST + VAT-AWARE)
+            # ======================================================
 
-            vat_val = self._safe_float(data.get("vat_amount"))
-            vat_val = vat_val if vat_val is not None else 0.0
+            discount_val = self._safe_float(data.get("discount_amount")) or 0.0
+            vat_val = self._safe_float(data.get("vat_amount")) or 0.0
+
+            azure_subtotal = self._safe_float(data.get("subtotal_amount"))
+            azure_total = self._safe_float(data.get("total_amount"))
+
+            # 1) Sum items
+            items_sum = 0.0
+            items_list = data.get("items") or []
+            found_any = False
+
+            for item in items_list:
+                amt = self._safe_float(item.get("amount"))
+                qty = self._safe_float(item.get("quantity"))
+                unit = self._safe_float(item.get("unit_price"))
+
+                if amt is not None:
+                    items_sum += amt
+                    found_any = True
+                elif qty is not None and unit is not None:
+                    items_sum += qty * unit
+                    found_any = True
+
+            items_sum = round(items_sum, 2) if found_any else None
+
+            # 2) Detect if items_sum is "incl VAT" or "excl VAT"
+            # Heuristic: if (items_sum - discount) ~= net paid (often Azure subtotal is net paid for Thai ABB),
+            # then items_sum is likely INCL VAT (like Lotus receipt).
+            items_sum_includes_vat = False
+            if items_sum is not None and azure_subtotal is not None and abs((items_sum - discount_val) - azure_subtotal) < 0.02:
+                items_sum_includes_vat = True
+            elif items_sum is not None and azure_total is not None and abs((items_sum - discount_val) - azure_total) < 0.02:
+                items_sum_includes_vat = True
+
+            # 3) Compute the four fields with consistent meaning
+            # We want:
+            # A) subtotal_excl_vat_excl_discount
+            # B) subtotal_incl_vat_excl_discount
+            # C) subtotal_excl_vat_incl_discount
+            # D) total_payable (incl VAT, incl discount)
+
+            subtotal_excl_vat_excl_discount = 0.0
+            subtotal_incl_vat_excl_discount = 0.0
+            subtotal_excl_vat_incl_discount = 0.0
+            total_payable = 0.0
+
+            if items_sum is not None:
+                if items_sum_includes_vat:
+                    # items_sum = gross incl VAT (before discount)
+                    gross_incl_vat = items_sum
+                    net_incl_vat = round(gross_incl_vat - discount_val, 2)
+
+                    gross_excl_vat = round(gross_incl_vat - vat_val, 2) if vat_val else gross_incl_vat
+                    net_excl_vat = round(net_incl_vat - vat_val, 2) if vat_val else net_incl_vat
+
+                    subtotal_excl_vat_excl_discount = gross_excl_vat
+                    subtotal_incl_vat_excl_discount = gross_incl_vat
+                    subtotal_excl_vat_incl_discount = max(net_excl_vat, 0.0)
+                    total_payable = net_incl_vat
+                else:
+                    # items_sum = gross excl VAT (before discount)
+                    gross_excl_vat = items_sum
+                    gross_incl_vat = round(gross_excl_vat + vat_val, 2)
+
+                    net_excl_vat = round(gross_excl_vat - discount_val, 2)
+                    net_incl_vat = round(net_excl_vat + vat_val, 2)
+
+                    subtotal_excl_vat_excl_discount = gross_excl_vat
+                    subtotal_incl_vat_excl_discount = gross_incl_vat
+                    subtotal_excl_vat_incl_discount = max(net_excl_vat, 0.0)
+                    total_payable = net_incl_vat
+            else:
+                # fallback if no items: use Azure values carefully
+                # Prefer net paid if we have it
+                if azure_subtotal is not None and vat_val is not None:
+                    # assume azure_subtotal might be net incl VAT (Thai ABB case)
+                    net_incl_vat = azure_subtotal
+                    net_excl_vat = round(net_incl_vat - vat_val, 2)
+
+                    subtotal_excl_vat_incl_discount = max(net_excl_vat, 0.0)
+                    total_payable = net_incl_vat
+                    # gross unknown -> set to net
+                    subtotal_excl_vat_excl_discount = subtotal_excl_vat_incl_discount
+                    subtotal_incl_vat_excl_discount = total_payable
+                elif azure_total is not None:
+                    total_payable = azure_total
+                    subtotal_incl_vat_excl_discount = azure_total
+                    subtotal_excl_vat_excl_discount = round(azure_total - vat_val, 2) if vat_val else azure_total
+                    subtotal_excl_vat_incl_discount = max(subtotal_excl_vat_excl_discount - discount_val, 0.0)
+
+            # Debug log visible in UI field
+            debug_text = f"""
+            items_sum: {items_sum}
+            items_sum_includes_vat: {items_sum_includes_vat}
+            azure_subtotal: {azure_subtotal}
+            azure_total: {azure_total}
+            vat: {vat_val}
+            discount: {discount_val}
+
+            subtotal_excl_vat_excl_discount: {subtotal_excl_vat_excl_discount}
+            subtotal_incl_vat_excl_discount: {subtotal_incl_vat_excl_discount}
+            subtotal_excl_vat_incl_discount: {subtotal_excl_vat_incl_discount}
+            total_payable: {total_payable}
+            """
+            self.extraction_log = debug_text
+
+            _logger.info("OCR Financial Debug:\n%s", debug_text)
+
+
+
+
 
             # Phones
             v_phone = self._normalize_phone(data.get("vendor_phone"))
@@ -539,13 +700,29 @@ class OCRDocument(models.Model):
                 "customer_phone": c_phone,
 
                 # totals
+                                # totals (old fields kept, but made consistent)
                 "currency_id": currency.id,
                 "currency_code": data.get("currency_code") or currency.name,
-                "vat_base_amount": final_subtotal,
-                "subtotal_amount": final_subtotal,
-                "discount_amount": (self._safe_float(data.get("discount_amount")) or 0.0),
+
+                # Old fields (keep them meaningful)
+                # subtotal_amount = base subtotal (excl VAT, excl discount)
+                "subtotal_amount": subtotal_excl_vat_excl_discount,
+
+                # vat_base_amount = same base subtotal (used as VAT base)
+                "vat_base_amount": subtotal_excl_vat_excl_discount,
+
+                "discount_amount": discount_val,
                 "vat_amount": vat_val,
-                "total_amount": (self._safe_float(data.get("total_amount")) or 0.0),
+
+                # total_amount = final payable (incl VAT, incl discount effect)
+                "total_amount": total_payable,
+
+                # New clear fields
+                "subtotal_excl_vat_excl_discount": subtotal_excl_vat_excl_discount,
+                "subtotal_incl_vat_excl_discount": subtotal_incl_vat_excl_discount,
+                "subtotal_excl_vat_incl_discount": subtotal_excl_vat_incl_discount,
+                "total_payable": total_payable,
+
 
                 # confidence
                 "confidence_score": (self._safe_float(data.get("confidence_score")) or 0.0),
@@ -558,7 +735,7 @@ class OCRDocument(models.Model):
                     "product_code": item.get("product_code"),
                     "description": item.get("description"),
                     "quantity": item.get("quantity", 1.0),
-                    "unit_price": item.get("unit_price", 0.0),
+                    "unit_price": (item.get("unit_price") or item.get("amount") or 0.0),
                     "discount_amount": item.get("discount_amount", 0.0),
                     "tax_rate": item.get("tax_rate", 0.0),
                     "total_amount": item.get("total_amount", 0.0),
