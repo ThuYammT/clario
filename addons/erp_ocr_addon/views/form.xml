@@ -63,7 +63,6 @@
               <span><strong>Type:</strong> <field name="document_type" readonly="1"/></span>
               <span><strong>Doc No:</strong> <field name="invoice_id" readonly="1"/></span>
               <span><strong>Date:</strong> <field name="invoice_date" readonly="1"/></span>
-              <span><strong>Confidence:</strong> <field name="confidence_score" readonly="1"/></span>
             </div>
           </div>
 
@@ -77,6 +76,7 @@
 
               <notebook>
 
+                <!-- Parties -->
                 <page string="Parties">
                   <group col="2">
                     <separator string="Seller" colspan="2"/>
@@ -95,6 +95,7 @@
                   </group>
                 </page>
 
+                <!-- Document Info -->
                 <page string="Document Info">
                   <group col="2">
                     <field name="invoice_id"/>
@@ -106,6 +107,7 @@
                   </group>
                 </page>
 
+                <!-- Line Items -->
                 <page string="Line Items">
                   <field name="line_ids" nolabel="1">
                     <tree editable="bottom">
@@ -120,38 +122,27 @@
                   </field>
                 </page>
 
+                <!-- Totals -->
                 <page string="Totals">
-
                   <group col="2">
 
                     <separator string="Base Calculations" colspan="2"/>
-
-                    <field name="subtotal_excl_vat_excl_discount"
-                          readonly="1"/>
-
-                    <field name="subtotal_incl_vat_excl_discount"
-                          readonly="1"/>
-
-                    <field name="subtotal_excl_vat_incl_discount"
-                          readonly="1"/>
+                    <field name="subtotal_excl_vat_excl_discount" readonly="1"/>
+                    <field name="subtotal_incl_vat_excl_discount" readonly="1"/>
+                    <field name="subtotal_excl_vat_incl_discount" readonly="1"/>
 
                     <separator string="Adjustments" colspan="2"/>
-
                     <field name="discount_amount"/>
-
                     <field name="vat_amount"/>
 
                     <separator string="Final Result" colspan="2"/>
-
                     <field name="total_payable"
-                          readonly="1"
-                          class="oe_inline"
-                          style="font-weight:600;font-size:16px;"/>
+                           readonly="1"
+                           class="oe_inline"
+                           style="font-weight:600;font-size:16px;"/>
 
                   </group>
-
                 </page>
-
 
               </notebook>
 
@@ -199,38 +190,6 @@
                 </div>
 
               </div>
-
-              <notebook style="margin-top:14px;">
-                <page string="Extraction Log">
-                  <field name="extraction_log" nolabel="1" readonly="1"/>
-                </page>
-                <page string="Raw OCR Text">
-                  <field name="extracted_text" nolabel="1" readonly="1"/>
-                </page>
-                <page string="Errors">
-                  <field name="ocr_error_message" nolabel="1" readonly="1"/>
-                </page>
-                <page string="Debug Comparison">
-
-                  <group>
-                    <separator string="Azure Raw Response"/>
-                    <field name="azure_raw_response"
-                          nolabel="1"
-                          readonly="1"
-                          widget="text"
-                          style="height:300px;"/>
-
-                    <separator string="Post Processed Data"/>
-                    <field name="post_processed_response"
-                          nolabel="1"
-                          readonly="1"
-                          widget="text"
-                          style="height:300px;"/>
-                  </group>
-
-                </page>
-
-              </notebook>
 
             </div>
 
