@@ -326,7 +326,53 @@ class OCRDocument(models.Model):
                 return num
 
         return None
+    
+    def _fallback_extract_reference(self, data):
+        raw_text = data.get("raw_text") or ""
+        invoice_id = data.get("invoice_id")
+        vendor_phone = data.get("vendor_phone")
+        vendor_tax = data.get("vendor_tax_id")
 
+        patterns = [
+            r"Ref\s*ABB\.?\s*No\.?\s*[:\-]?\s*([A-Za-z0-9\-\/]+)",
+            r"ABB\s*No\.?\s*[:\-]?\s*([A-Za-z0-9\-\/]+)",
+            r"Ref\s*No\.?\s*[:\-]?\s*([A-Za-z0-9\-\/]+)",
+            r"Reference\s*No\.?\s*[:\-]?\s*([A-Za-z0-9\-\/]+)",
+            r"เลขที่อ้างอิง\s*[:\-]?\s*([A-Za-z0-9\-\/]+)",
+            r"เลขอ้างอิง\s*[:\-]?\s*([A-Za-z0-9\-\/]+)",
+            r"เลขที่คำสั่งซื้อ\s*[:\-]?\s*([A-Za-z0-9\-\/]+)",
+            r"เลขที่ใบกำกับ\s*[:\-]?\s*([A-Za-z0-9\-\/]+)",
+        ]
+
+        for p in patterns:
+            m = re.search(p, raw_text, re.IGNORECASE)
+            if m:
+                ref = m.group(1).strip()
+                if ref and ref not in [invoice_id, vendor_phone, vendor_tax]:
+                    return ref
+
+        # Strict ABB pattern
+        m = re.search(r"\bABB\d{8,}\b", raw_text)
+        if m:
+            ref = m.group(0)
+            if ref not in [invoice_id, vendor_phone, vendor_tax]:
+                return ref
+
+        # Strict CP pattern
+        m = re.search(r"\bCP[A-Z0-9]{6,}\b", raw_text)
+        if m:
+            ref = m.group(0)
+            if ref not in [invoice_id, vendor_phone, vendor_tax]:
+                return ref
+
+        # Long numeric reference (minimum 12 digits only)
+        m = re.search(r"\b\d{12,}\b", raw_text)
+        if m:
+            ref = m.group(0)
+            if ref not in [invoice_id, vendor_phone, vendor_tax]:
+                return ref
+
+        return None
 
 
 
@@ -434,16 +480,30 @@ class OCRDocument(models.Model):
 
         partner = self._find_or_create_vendor_partner()
 
+        if not self.line_ids:
+            raise UserError(_("No line items found."))
+
+        # Find 7% purchase tax
+        tax_7 = self.env["account.tax"].search([
+            ("amount", "=", 7),
+            ("type_tax_use", "=", "purchase"),
+        ], limit=1)
+
         invoice_lines = []
+
         for line in self.line_ids:
+            unit_price = line.unit_price or 0.0
+
+            # If receipt includes VAT, remove VAT portion
+            if self.vat_amount:
+                unit_price = round(unit_price / 1.07, 6)
+
             invoice_lines.append((0, 0, {
                 "name": line.description or "",
                 "quantity": line.quantity or 1.0,
-                "price_unit": line.unit_price or 0.0,
+                "price_unit": unit_price,
+                "tax_ids": [(6, 0, [tax_7.id])] if tax_7 else False,
             }))
-
-        if not invoice_lines:
-            raise UserError(_("No line items found."))
 
         bill = self.env["account.move"].create({
             "move_type": "in_invoice",
@@ -452,6 +512,17 @@ class OCRDocument(models.Model):
             "invoice_origin": self.name,
             "invoice_line_ids": invoice_lines,
         })
+
+        # Apply discount as negative line
+        if self.discount_amount:
+            bill.write({
+                "invoice_line_ids": [(0, 0, {
+                    "name": "Invoice Discount",
+                    "quantity": 1,
+                    "price_unit": -abs(self.discount_amount),
+                    "tax_ids": False,
+                })]
+            })
 
         self.vendor_bill_id = bill.id
 
@@ -529,7 +600,11 @@ class OCRDocument(models.Model):
                 fallback_tax = self._fallback_extract_customer_tax_id(data)
                 if fallback_tax:
                     data["customer_tax_id"] = fallback_tax
-
+            # Reference fallback
+            if not data.get("reference_number"):
+                ref_fallback = self._fallback_extract_reference(data)
+                if ref_fallback:
+                    data["reference_number"] = ref_fallback
 
             self.post_processed_response = json.dumps(
             data, indent=4, ensure_ascii=False, default=str)
@@ -578,10 +653,21 @@ class OCRDocument(models.Model):
             # Heuristic: if (items_sum - discount) ~= net paid (often Azure subtotal is net paid for Thai ABB),
             # then items_sum is likely INCL VAT (like Lotus receipt).
             items_sum_includes_vat = False
-            if items_sum is not None and azure_subtotal is not None and abs((items_sum - discount_val) - azure_subtotal) < 0.02:
-                items_sum_includes_vat = True
-            elif items_sum is not None and azure_total is not None and abs((items_sum - discount_val) - azure_total) < 0.02:
-                items_sum_includes_vat = True
+
+            if items_sum is not None:
+                net_after_discount = items_sum - discount_val
+
+                # Case 1: net matches Azure subtotal
+                if azure_subtotal is not None and abs(net_after_discount - azure_subtotal) < 0.02:
+                    items_sum_includes_vat = True
+
+                # Case 2: net matches Azure total directly
+                elif azure_total is not None and abs(net_after_discount - azure_total) < 0.02:
+                    items_sum_includes_vat = True
+
+                # Case 3: net minus VAT matches Azure total (Watson case)
+                elif azure_total is not None and vat_val and abs((net_after_discount - vat_val) - azure_total) < 0.02:
+                    items_sum_includes_vat = True
 
             # 3) Compute the four fields with consistent meaning
             # We want:
