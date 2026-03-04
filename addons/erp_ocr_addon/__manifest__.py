@@ -17,8 +17,6 @@
         "views/form.xml",
         "views/tree.xml",
         "views/search.xml",
-        "views/invoice.xml",
-        "views/receipt.xml",
     ],
     "application": True,
     "installable": True,

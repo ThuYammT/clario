@@ -549,7 +549,10 @@ class OCRDocument(models.Model):
 
         try:
             service = AzureInvoiceService(endpoint, key)
-            raw_data = service.analyze(base64.b64decode(self.file))
+            raw_data = service.analyze(
+                base64.b64decode(self.file),
+                doc_type=self.document_type,
+            )
 
             # Store exact Azure output
             self.azure_raw_response = json.dumps(raw_data, indent=4, ensure_ascii=False, default=str)

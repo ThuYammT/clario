@@ -97,9 +97,12 @@ class AzureInvoiceService:
     # ======================================================
     # MAIN ANALYSIS
     # ======================================================
-    def analyze(self, file_bytes: bytes) -> dict:
+    def analyze(self, file_bytes: bytes, doc_type: str = "invoice") -> dict:
+        # Select Azure model based on document type
+        model_id = "prebuilt-receipt" if doc_type == "receipt" else "prebuilt-invoice"
+
         poller = self.client.begin_analyze_document(
-            "prebuilt-invoice",
+            model_id,
             AnalyzeDocumentRequest(bytes_source=file_bytes),
         )
         result = poller.result()
@@ -111,7 +114,7 @@ class AzureInvoiceService:
 
         doc = result.documents[0]
         fields = doc.fields or {}
-
+        _logger.info("AZURE FIELD KEYS: %s", list(fields.keys()))
         def fget(name):
             return fields.get(name)
 
@@ -133,7 +136,10 @@ class AzureInvoiceService:
         # ==================================================
         # PARTY FIELDS
         # ==================================================
-        vendor_name = get_string("VendorAddressRecipient") or get_string("VendorName")
+        if doc_type == "receipt":
+            vendor_name = get_string("MerchantName")
+        else:
+            vendor_name = get_string("VendorAddressRecipient") or get_string("VendorName")
         customer_name = get_string("CustomerAddressRecipient") or get_string("CustomerName")
 
         vendor_tax_id = get_string("VendorTaxId")
@@ -152,26 +158,47 @@ class AzureInvoiceService:
         vendor_branch_name = self._extract_branch_from_text(raw_text)
 
         # Structured addresses
-        vendor_address_struct = self._get_structured_address(fget("VendorAddress"))
+        # Structured addresses
+        if doc_type == "receipt":
+            vendor_address_struct = self._get_structured_address(fget("MerchantAddress"))
+            _logger.info("MerchantAddress raw field: %s", fget("MerchantAddress"))
+            _logger.info("Vendor address struct: %s", vendor_address_struct)
+        else:
+            vendor_address_struct = self._get_structured_address(fget("VendorAddress"))
+
         customer_address_struct = self._get_structured_address(fget("CustomerAddress"))
 
         # ==================================================
         # DOCUMENT INFO
         # ==================================================
-        invoice_id = get_string("InvoiceId")
-        reference_number = get_string("PurchaseOrder") or get_string("ReferenceNumber")
+        if doc_type == "receipt":
+            invoice_id = get_string("ReceiptId")
+            reference_number = None
 
-        invoice_date = get_date("InvoiceDate")
-        due_date = get_date("DueDate")
-        payment_terms = get_string("PaymentTerm")
+            invoice_date = get_date("TransactionDate")
+            due_date = None
+            payment_terms = None
+        else:
+            invoice_id = get_string("InvoiceId")
+            reference_number = get_string("PurchaseOrder") or get_string("ReferenceNumber")
+
+            invoice_date = get_date("InvoiceDate")
+            due_date = get_date("DueDate")
+            payment_terms = get_string("PaymentTerm")
 
         # ==================================================
         # FINANCIALS (RAW AZURE VALUES ONLY)
         # ==================================================
-        subtotal, c1 = get_currency("SubTotal")
-        discount, c2 = get_currency("TotalDiscount")
-        vat, c3 = get_currency("TotalTax")
-        total, c4 = get_currency("InvoiceTotal")
+        if doc_type == "receipt":
+            subtotal, c1 = get_currency("Subtotal")
+            discount, c2 = get_currency("Discount")
+            vat, c3 = get_currency("TotalTax")
+            total, c4 = get_currency("Total")
+        else:
+            subtotal, c1 = get_currency("SubTotal")
+            discount, c2 = get_currency("TotalDiscount")
+            vat, c3 = get_currency("TotalTax")
+            total, c4 = get_currency("InvoiceTotal")
 
         currency_code = c4 or c3 or c2 or c1
 
@@ -212,8 +239,12 @@ class AzureInvoiceService:
                 desc = l_str("Description")
                 code = l_str("ProductCode")
                 qty = l_num("Quantity") or 0.0
-                unit_price = l_money("UnitPrice") or 0.0
-                amt = l_money("Amount") or 0.0
+                if doc_type == "receipt":
+                    unit_price = l_money("Price") or 0.0
+                    amt = l_money("TotalPrice") or 0.0
+                else:
+                    unit_price = l_money("UnitPrice") or 0.0
+                    amt = l_money("Amount") or 0.0
 
                 items.append({
                     "description": desc,
