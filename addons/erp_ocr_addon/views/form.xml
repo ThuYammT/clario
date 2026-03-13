@@ -34,13 +34,13 @@
                   type="object"
                   string="Create Vendor Bill"
                   class="btn-primary"
-                  invisible="status != 'done' or vendor_bill_id"/>
+                  invisible="status != 'done' or vendor_bill_id != False"/>
 
           <button name="action_open_vendor_bill"
                   type="object"
                   string="Open Vendor Bill"
                   class="btn-secondary"
-                  invisible="not vendor_bill_id"/>
+                  invisible="vendor_bill_id == False"/>
 
           <field name="status"
                  widget="statusbar"
