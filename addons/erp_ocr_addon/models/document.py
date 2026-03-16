@@ -155,7 +155,11 @@ class OCRDocument(models.Model):
         string="Total Payable (Incl VAT, Incl Discount)",
         currency_field="currency_id",
     )
-
+    vat_type = fields.Selection(
+        [("included", "Included"), ("excluded", "Excluded"), ("unknown", "Unknown")],
+        string="VAT Type",
+        default="unknown",
+    )
 
     # ======================================================
     # 6) LOGS & OCR META
@@ -274,7 +278,6 @@ class OCRDocument(models.Model):
     # ======================================================
     def action_run_ocr(self):
         self.ensure_one()
-
         endpoint = os.environ.get("AZURE_FORM_ENDPOINT")
         key = os.environ.get("AZURE_FORM_KEY")
         if not endpoint or not key:
@@ -282,13 +285,16 @@ class OCRDocument(models.Model):
         
         self.write({"status": "processing", "progress": 10.0})
         self.env.cr.commit()
+        
 
         try:
             service = AzureInvoiceService(endpoint, key)
             raw_data = service.analyze(
                 base64.b64decode(self.file),
+                doc_type=self.document_type
             )
             data = process_document_data(raw_data)
+            data["doc_type"] = self.document_type
 
             # Store exact Azure output
             self.azure_raw_response = json.dumps(raw_data, indent=4, ensure_ascii=False, default=str)
@@ -297,6 +303,8 @@ class OCRDocument(models.Model):
             self.post_processed_response = json.dumps(
                 data, indent=4, ensure_ascii=False, default=str
             )
+            _logger.warning("=== DOC TYPE === %s", data.get("doc_type"))
+            _logger.warning("=== RAW DATA === %s", json.dumps(data, indent=2, default=str))
 
 
             if not data:
@@ -304,6 +312,7 @@ class OCRDocument(models.Model):
 
             currency = detect_currency(self.env,data.get("currency_code"))
             fin = compute_financials(data, safe_float)
+            vat_type = fin.get("vat_type", "unknown")
 
             subtotal_excl_vat_excl_discount = fin["subtotal_excl_vat_excl_discount"]
             subtotal_incl_vat_excl_discount = fin["subtotal_incl_vat_excl_discount"]
@@ -358,11 +367,11 @@ class OCRDocument(models.Model):
                                 # totals (old fields kept, but made consistent)
                 "currency_id": currency.id,
                 "currency_code": data.get("currency_code") or currency.name,
-
+                
                 # Old fields (keep them meaningful)
                 # subtotal_amount = base subtotal (excl VAT, excl discount)
                 "subtotal_amount": subtotal_excl_vat_excl_discount,
-
+                "vat_type": vat_type,
                 # vat_base_amount = same base subtotal (used as VAT base)
                 "vat_base_amount": subtotal_excl_vat_excl_discount,
 
@@ -384,19 +393,54 @@ class OCRDocument(models.Model):
             })
 
             # Replace lines safely
-            lines_cmds = [(5, 0, 0)]
+            # Replace lines safely - FIXED VERSION with document_id
+            lines_cmds = [(5, 0, 0)]  # Clear existing lines
+            item_count = 0
+
             for item in (data.get("items") or []):
+                qty = item.get("quantity")
+                amount = item.get("amount") or 0.0
+                unit_price = item.get("unit_price") or 0.0
+
+                # For receipts, if we have amount but no unit_price, use amount as unit_price
+                if self.document_type == 'receipt' and amount and not unit_price:
+                    unit_price = amount
+                    _logger.info(f"Receipt item - Setting unit_price to {unit_price} from amount {amount}")
+
+                # Skip fake/empty rows
+                if (qty == 0 or qty is None) and amount == 0:
+                    continue
+
+                # Ensure we have valid numbers
+                qty = float(qty) if qty not in (None, False) else 1.0
+                unit_price = float(unit_price) if unit_price not in (None, False) else 0.0
+                amount = float(amount) if amount not in (None, False) else 0.0
+
+                # Log each item being created
+                _logger.info(f"Creating line item - Desc: {item.get('description')}, Qty: {qty}, Unit Price: {unit_price}, Amount: {amount}")
+
                 lines_cmds.append((0, 0, {
-                    "product_code": item.get("product_code"),
-                    "description": item.get("description"),
-                    "quantity": item.get("quantity", 1.0),
-                    "unit_price": (item.get("unit_price") or item.get("amount") or 0.0),
+                    "document_id": self.id,  # CRITICAL: Link to the current document
+                    "product_code": item.get("product_code") or "",
+                    "description": item.get("description") or "",
+                    "quantity": qty if qty > 0 else 1.0,
+                    "unit_price": unit_price,
                     "discount_amount": item.get("discount_amount", 0.0),
                     "tax_rate": item.get("tax_rate", 0.0),
-                    "total_amount": item.get("total_amount", 0.0),
+                    "tax_amount": item.get("tax_amount", 0.0),
                 }))
-            self.write({"line_ids": lines_cmds})
+                item_count += 1
 
+            # Write the lines to the document
+            if lines_cmds:
+                self.write({"line_ids": lines_cmds})
+                _logger.info(f"Created {item_count} line items for document {self.id}")
+                
+                # Verify the lines were created
+                line_count = self.env['ocr.document.line'].search_count([('document_id', '=', self.id)])
+                _logger.info(f"Verification: Found {line_count} line items in database for document {self.id}")
+            else:
+                _logger.warning("No line items were created")
         except Exception as e:
             _logger.exception("OCR Error")
             self.write({

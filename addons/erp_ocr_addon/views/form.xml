@@ -78,35 +78,70 @@
 
               <notebook>
 
+                <!-- ================= PARTIES ================= -->
                 <page string="Parties">
                   <group col="2">
                     <separator string="Seller" colspan="2"/>
-                    <field name="vendor_name"/>
-                    <field name="vendor_branch_name"/>
-                    <field name="vendor_tax_id"/>
-                    <field name="vendor_address" colspan="2"/>
-                    <field name="vendor_phone"/>
-                    <field name="vendor_website"/>
 
-                    <separator string="Customer" colspan="2"/>
-                    <field name="customer_name"/>
-                    <field name="customer_tax_id"/>
-                    <field name="customer_address" colspan="2"/>
-                    <field name="customer_phone"/>
+                    <field name="vendor_name"/>
+
+                    <!-- HIDE IN RECEIPT -->
+                    <field name="vendor_branch_name"
+                           invisible="document_type == 'receipt'"/>
+
+                    <field name="vendor_tax_id"
+                           invisible="document_type == 'receipt'"/>
+
+                    <field name="vendor_address" colspan="2"/>
+
+                    <!-- HIDE IN INVOICE -->
+                    <field name="vendor_phone"
+                           invisible="document_type == 'invoice'"/>
+
+                    <!-- HIDE IN RECEIPT -->
+                    <field name="vendor_website"
+                           invisible="document_type == 'receipt'"/>
+
+                    <!-- CUSTOMER (HIDE FOR RECEIPT) -->
+                    <separator string="Customer" colspan="2"
+                               invisible="document_type == 'receipt'"/>
+
+                    <field name="customer_name"
+                           invisible="document_type == 'receipt'"/>
+
+                    <field name="customer_tax_id"
+                           invisible="document_type == 'receipt'"/>
+
+                    <field name="customer_address" colspan="2"
+                           invisible="document_type == 'receipt'"/>
+
+                    <!-- HIDE IN INVOICE -->
+                    <field name="customer_phone"
+                           invisible="document_type == 'invoice'"/>
+
                   </group>
                 </page>
 
+                <!-- ================= DOCUMENT INFO ================= -->
                 <page string="Document Info">
                   <group col="2">
                     <field name="invoice_id"/>
                     <field name="invoice_date"/>
-                    <field name="due_date"/>
-                    <field name="payment_terms"/>
-                    <field name="reference_number"/>
+
+                    <field name="due_date"
+                           invisible="document_type == 'receipt'"/>
+
+                    <field name="payment_terms"
+                           invisible="document_type == 'receipt'"/>
+
+                    <field name="reference_number"
+                           invisible="document_type == 'receipt'"/>
+
                     <field name="currency_id" readonly="1"/>
                   </group>
                 </page>
 
+                <!-- ================= LINE ITEMS ================= -->
                 <page string="Line Items">
                   <field name="line_ids" nolabel="1">
                     <tree editable="bottom">
@@ -121,38 +156,43 @@
                   </field>
                 </page>
 
+                <!-- ================= TOTALS ================= -->
                 <page string="Totals">
 
                   <group col="2">
 
-                    <separator string="Base Calculations" colspan="2"/>
+                    <separator string="Base Calculations" colspan="2"
+                               invisible="document_type == 'receipt'"/>
 
                     <field name="subtotal_excl_vat_excl_discount"
-                          readonly="1"/>
+                           readonly="1"
+                           invisible="document_type == 'receipt'"/>
 
                     <field name="subtotal_incl_vat_excl_discount"
-                          readonly="1"/>
+                           readonly="1"
+                           invisible="document_type == 'receipt'"/>
 
                     <field name="subtotal_excl_vat_incl_discount"
-                          readonly="1"/>
+                           readonly="1"
+                           invisible="document_type == 'receipt'"/>
 
                     <separator string="Adjustments" colspan="2"/>
 
-                    <field name="discount_amount"/>
+                    <field name="discount_amount"
+                           invisible="document_type == 'receipt'"/>
 
                     <field name="vat_amount"/>
 
                     <separator string="Final Result" colspan="2"/>
 
                     <field name="total_payable"
-                          readonly="1"
-                          class="oe_inline"
-                          style="font-weight:600;font-size:16px;"/>
+                           readonly="1"
+                           class="oe_inline"
+                           style="font-weight:600;font-size:16px;"/>
 
                   </group>
 
                 </page>
-
 
               </notebook>
 
@@ -168,7 +208,6 @@
                 Upload and preview the original PDF/image.
               </div>
 
-              <!-- Upload -->
               <field name="file"
                      filename="file_filename"
                      widget="binary"
@@ -176,7 +215,6 @@
 
               <div style="margin-top:12px;">
 
-                <!-- PDF Preview -->
                 <field name="file"
                        filename="file_filename"
                        widget="pdf_viewer"
@@ -184,7 +222,6 @@
                        invisible="not id or not file or '.pdf' not in (file_filename or '')"
                        style="height:650px;width:100%;"/>
 
-                <!-- Image Preview -->
                 <field name="file"
                        filename="file_filename"
                        widget="image"
@@ -192,7 +229,6 @@
                        invisible="not id or not file or '.pdf' in (file_filename or '')"
                        style="max-width:100%;height:auto;border:1px solid #ddd;border-radius:6px;"/>
 
-                <!-- Message when record not saved -->
                 <div class="text-muted"
                      invisible="id"
                      style="margin-top:8px;">
@@ -211,24 +247,23 @@
                 <page string="Errors">
                   <field name="ocr_error_message" nolabel="1" readonly="1"/>
                 </page>
-                <page string="Debug Comparison">
 
+                <page string="Debug Comparison">
                   <group>
                     <separator string="Azure Raw Response"/>
                     <field name="azure_raw_response"
-                          nolabel="1"
-                          readonly="1"
-                          widget="text"
-                          style="height:300px;"/>
+                           nolabel="1"
+                           readonly="1"
+                           widget="text"
+                           style="height:300px;"/>
 
                     <separator string="Post Processed Data"/>
                     <field name="post_processed_response"
-                          nolabel="1"
-                          readonly="1"
-                          widget="text"
-                          style="height:300px;"/>
+                           nolabel="1"
+                           readonly="1"
+                           widget="text"
+                           style="height:300px;"/>
                   </group>
-
                 </page>
 
               </notebook>

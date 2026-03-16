@@ -5,12 +5,16 @@ def normalize_phone(phone):
     if not phone:
         return phone
 
-    phone = str(phone).strip()
+    digits = re.sub(r"\D", "", str(phone))
 
-    for ch in [" ", "-", "(", ")", ".", "\t", "\n", "\r"]:
-        phone = phone.replace(ch, "")
+    # Thai format handling
+    if len(digits) >= 9:
+        if digits.startswith("0"):
+            return digits[:10]
+        elif digits.startswith("66"):
+            return "0" + digits[2:11]
 
-    return phone
+    return digits
 
 
 def format_structured_address(addr_struct):

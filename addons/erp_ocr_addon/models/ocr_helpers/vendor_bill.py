@@ -6,7 +6,7 @@ from .cleaners import normalize_phone
 def create_vendor_bill(document):
 
     document.ensure_one()
-
+    doc_type = document.document_type
     if document.vendor_bill_id:
         raise UserError(_("Vendor Bill already created."))
 
@@ -27,27 +27,90 @@ def create_vendor_bill(document):
             "supplier_rank": 1,
         })
 
-    tax_7 = document.env["account.tax"].search([
-        ("amount", "=", 7),
-        ("type_tax_use", "=", "purchase"),
-    ], limit=1)
-
     invoice_lines = []
 
-    for line in document.line_ids:
+    # ======================================================
+    # 🔥 NORMAL LINES (NO TAX)
+    # ======================================================
+    if doc_type == "receipt":
 
-        unit_price = line.unit_price or 0
+        for line in document.line_ids:
+            qty = line.quantity or 1
+            unit_price = line.unit_price or 0
+            line_total = line.total_amount or line.subtotal_amount or 0
 
-        if document.vat_amount:
-            unit_price = round(unit_price / 1.07, 6)
+            if not unit_price and line_total and qty:
+                unit_price = line_total / qty
 
+            invoice_lines.append((0, 0, {
+                "name": line.description or "",
+                "quantity": qty,
+                "price_unit": unit_price,
+                "tax_ids": False,
+            }))
+    else:
+
+        for line in document.line_ids:
+
+            qty = line.quantity or 1
+            unit_price = line.unit_price or 0
+
+            line_total = line.total_amount or line.subtotal_amount or 0
+
+            if line_total == 0:
+                qty = 1
+                unit_price = 0
+
+            elif line_total and qty > 0:
+                expected_total = round(unit_price * qty, 2)
+
+                if abs(expected_total - line_total) > 5:
+                    unit_price = line_total / qty
+
+            invoice_lines.append((0, 0, {
+                "name": line.description or "",
+                "quantity": qty,
+                "price_unit": unit_price,
+                "tax_ids": False,
+            }))
+
+    # ======================================================
+    # 🔥 DISCOUNT
+    # ======================================================
+    if document.discount_amount and doc_type != "receipt":
         invoice_lines.append((0, 0, {
-            "name": line.description or "",
-            "quantity": line.quantity or 1,
-            "price_unit": unit_price,
-            "tax_ids": [(6, 0, [tax_7.id])] if tax_7 else False,
+            "name": "Discount",
+            "quantity": 1,
+            "price_unit": document.discount_amount,
+            "tax_ids": False,
         }))
 
+    # ======================================================
+    # 🔥 VAT AS SEPARATE LINE (KEY FIX)
+    # ======================================================
+    if document.vat_amount and document.vat_amount > 0 and doc_type != "receipt":
+
+        if document.vat_type == "included":
+            # 🔥 VAT already inside total → DO NOT add again
+            invoice_lines.append((0, 0, {
+                "name": f"VAT 7% (included: {document.vat_amount})",
+                "quantity": 1,
+                "price_unit": 0,   # ✅ DOES NOT AFFECT TOTAL
+                "tax_ids": False,
+            }))
+
+        else:
+            # 🔥 VAT not included → add normally
+            invoice_lines.append((0, 0, {
+                "name": "VAT 7%",
+                "quantity": 1,
+                "price_unit": document.vat_amount,
+                "tax_ids": False,
+            }))
+
+    # ======================================================
+    # CREATE BILL
+    # ======================================================
     bill = document.env["account.move"].create({
         "move_type": "in_invoice",
         "partner_id": partner.id,

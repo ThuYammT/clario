@@ -63,3 +63,27 @@ def fallback_extract_reference(data):
                 return ref
 
     return None
+def fallback_extract_customer_name(raw_text):
+    if not raw_text:
+        return None
+
+    # Look for customer section
+    m = re.search(r"ชื่อ\s*ที่อยู่[:\s]*\n\s*([^\n]+)", raw_text)
+    if m:
+        val = m.group(1).strip()
+
+        # ❌ reject garbage / labels
+        bad_words = [
+            "ลูกค้า", "customer",
+            "มีผลใช้ถึง", "วันที่",
+            "โทรศัพท์", "email", "เลข"
+        ]
+
+        if any(b in val.lower() for b in bad_words):
+            return None
+
+        # must be meaningful text
+        if len(val) > 5:
+            return val
+
+    return None

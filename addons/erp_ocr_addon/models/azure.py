@@ -40,18 +40,6 @@ class AzureInvoiceService:
     # ======================================================
     # SAFE FALLBACK EXTRACTORS
     # ======================================================
-    def _extract_phone_from_text(self, text: str):
-        if not text:
-            return None
-
-        pat = r"(?:เบอร์โทร|โทรศัพท์|Tel\.?|Phone)\s*[:\|]?\s*([+0-9][0-9 \-\(\)\.]{7,})"
-        m = re.search(pat, text, flags=re.IGNORECASE)
-        if m:
-            return self._normalize_phone(m.group(1))
-
-        loose = re.findall(r"(\+66[0-9]{8,9}|0[0-9]{8,9})", text)
-        return loose[0] if loose else None
-
     def _extract_vendor_website_from_text(self, text: str):
         if not text:
             return None
@@ -65,14 +53,27 @@ class AzureInvoiceService:
     def _extract_branch_from_text(self, text: str):
         if not text:
             return None
-        m = re.search(r"(รหัสสาขา)\s*[:\-]?\s*(\d{4,6})", text)
-        if m:
-            return f"Branch {m.group(2)}"
-        m = re.search(r"(?:Branch)\s*[:\-]?\s*(\d{4,6})", text, flags=re.IGNORECASE)
+
+        # Thai branch
+        m = re.search(r"สาขา(?:ที่)?\s*[:\-]?\s*(\d{1,5})", text)
         if m:
             return f"Branch {m.group(1)}"
-        return None
 
+        # Thai branch code
+        m = re.search(r"รหัสสาขา\s*[:\-]?\s*(\d{1,5})", text)
+        if m:
+            return f"Branch {m.group(1)}"
+
+        # English branch
+        m = re.search(r"Branch\s*[:\-]?\s*(\d{1,5})", text, re.IGNORECASE)
+        if m:
+            return f"Branch {m.group(1)}"
+
+        # Head office
+        if re.search(r"สำนักงานใหญ่|Head Office", text, re.IGNORECASE):
+            return "Head Office"
+
+        return None
     # ======================================================
     # ADDRESS STRUCTURED HANDLER
     # ======================================================
@@ -146,9 +147,15 @@ class AzureInvoiceService:
         customer_tax_id = get_string("CustomerTaxId")  # NOTE: many Thai receipts use CustomerId instead
 
         # Phones
-        vendor_phone = get_string("VendorPhoneNumber") or self._extract_phone_from_text(raw_text)
-        customer_phone = get_string("CustomerPhoneNumber")
-
+        # Phones - ONLY use what Azure directly extracts, no fallback
+        if doc_type == "receipt":
+            # Receipts don't have phone fields in Azure prebuilt model
+            vendor_phone = None
+            customer_phone = None
+        else:
+            # Invoices - only use Azure extracted phone numbers
+            vendor_phone = get_string("VendorPhoneNumber")
+            customer_phone = get_string("CustomerPhoneNumber")
         # Website
         vendor_website = get_string("VendorWebsite") or self._extract_vendor_website_from_text(raw_text)
         if vendor_website:
@@ -230,18 +237,48 @@ class AzureInvoiceService:
                     return obj.get(k).value_number if obj.get(k) else 0.0
 
                 def l_money(k):
-                    return (
-                        obj.get(k).value_currency.amount
-                        if obj.get(k) and getattr(obj.get(k), "value_currency", None)
-                        else 0.0
-                    )
+                    field = obj.get(k)
+                    if not field:
+                        return 0.0
+                    
+                    # Check if it's a currency field
+                    if hasattr(field, 'value_currency') and field.value_currency:
+                        return field.value_currency.amount or 0.0
+                    # Check if it's a number field
+                    elif hasattr(field, 'value_number') and field.value_number:
+                        return field.value_number or 0.0
+                    # Check if it's directly a number
+                    elif hasattr(field, 'value') and isinstance(field.value, (int, float)):
+                        return field.value
+                    else:
+                        return 0.0
 
                 desc = l_str("Description")
                 code = l_str("ProductCode")
                 qty = l_num("Quantity") or 0.0
                 if doc_type == "receipt":
-                    unit_price = l_money("Price") or 0.0
+                  
+                   
+                    # Get the total price from TotalPrice field
                     amt = l_money("TotalPrice") or 0.0
+                    
+                    # For receipts, unit_price might not be directly available
+                    # We'll calculate unit_price from amount and quantity
+                    if amt and qty:
+                        unit_price = amt / qty
+                    else:
+                        unit_price = 0.0
+                    
+                    # If no amount but we have description, try to extract from description
+                    if not amt and desc:
+                        # Try to find price in description (common in Thai receipts)
+                        price_match = re.search(r'(\d+(?:[,.]\d+)?)\s*(?:บาท|baht|฿)', desc)
+                        if price_match:
+                            try:
+                                amt = float(price_match.group(1).replace(',', ''))
+                                unit_price = amt / qty if qty else amt
+                            except:
+                                pass
                 else:
                     unit_price = l_money("UnitPrice") or 0.0
                     amt = l_money("Amount") or 0.0
@@ -249,7 +286,7 @@ class AzureInvoiceService:
                 items.append({
                     "description": desc,
                     "product_code": code,
-                    "quantity": qty if qty else 1.0,
+                    "quantity": qty if qty is not None else 1.0,
                     "unit_price": unit_price,
                     "amount": amt,
                 })
@@ -276,6 +313,7 @@ class AzureInvoiceService:
         customer_id = get_string("CustomerId")
 
         return {
+            "doc_type": doc_type,
             "raw_text": raw_text,
             "confidence_score": confidence,
             "currency_code": currency_code,
