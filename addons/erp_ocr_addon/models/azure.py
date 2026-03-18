@@ -23,6 +23,7 @@ class AzureInvoiceService:
             endpoint=endpoint,
             credential=AzureKeyCredential(key),
         )
+        self._vat_included_hint = False
 
     # ======================================================
     # NORMALIZATION HELPERS
@@ -254,6 +255,12 @@ class AzureInvoiceService:
                         return 0.0
 
                 desc = l_str("Description")
+                desc_lower = desc.lower()
+                if "included vat" in desc_lower or "รวมภาษี" in desc_lower or "vat included" in desc_lower:
+                    # Set a flag in the data that will be returned
+                    # We'll add this to the return dict later
+                    self._vat_included_hint = True
+                    _logger.info(f"VAT included hint found in item description: {desc}")
                 code = l_str("ProductCode")
                 qty = l_num("Quantity") or 0.0
                 if doc_type == "receipt":
@@ -311,6 +318,9 @@ class AzureInvoiceService:
         # ALSO: Many Thai receipts store CustomerId (not CustomerTaxId)
         # We expose it to your Odoo deterministic fallback logic.
         customer_id = get_string("CustomerId")
+        
+        # Check if any item indicated VAT is included
+        items_vat_included = getattr(self, '_vat_included_hint', False)
 
         return {
             "doc_type": doc_type,

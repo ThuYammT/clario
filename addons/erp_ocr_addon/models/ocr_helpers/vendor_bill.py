@@ -1,6 +1,9 @@
 from odoo.exceptions import UserError
 from odoo import _
 from .cleaners import normalize_phone
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 def create_vendor_bill(document):
@@ -12,21 +15,53 @@ def create_vendor_bill(document):
 
     vat = (document.vendor_tax_id or "").strip() or False
     phone = normalize_phone(document.vendor_phone)
+    extracted_name = document.vendor_name or ""
 
-    partner = document.env["res.partner"].search(
-        [("vat", "=", vat)],
-        limit=1
-    )
+    partner = False
 
+    if vat:
+        # First try: Find partner with matching tax ID AND similar name
+        # Search for partners with this tax ID
+        partners_with_vat = document.env["res.partner"].search([("vat", "=", vat)])
+
+        if partners_with_vat:
+            _logger.info(f"Found {len(partners_with_vat)} partners with tax ID {vat}")
+
+            # Try to find a partner with matching name (exact or partial)
+            for p in partners_with_vat:
+                # Check if names match (case-insensitive, ignore extra spaces)
+                p_name = p.name or ""
+                if (extracted_name and extracted_name.strip() == p_name.strip()) or \
+                   (extracted_name and extracted_name.strip() in p_name.strip()) or \
+                   (p_name and p_name.strip() in extracted_name.strip()):
+                    partner = p
+                    _logger.info(f"Found matching partner by name: {p.name}")
+                    break
+
+            # If no name match found, use the first one but warn
+            if not partner:
+                partner = partners_with_vat[0]
+                _logger.warning(f"No name match found. Using first partner: {partner.name}")
+
+                # Optionally update the partner name if it's clearly wrong
+                # (like the Japanese characters case)
+                if partner.name != extracted_name and len(partners_with_vat) == 1:
+                    # Only auto-update if there's just one partner with this tax ID
+                    partner.write({"name": extracted_name})
+                    _logger.info(f"Updated partner name from '{partner.name}' to '{extracted_name}'")
+
+    # If no partner found, create a new one
     if not partner:
         partner = document.env["res.partner"].create({
-            "name": document.vendor_name,
+            "name": extracted_name,
             "vat": vat,
             "phone": phone,
             "website": document.vendor_website,
             "supplier_rank": 1,
         })
+        _logger.info(f"Created new partner: {extracted_name}")
 
+    # Create invoice lines (rest of your existing code remains the same)
     invoice_lines = []
 
     # ======================================================
